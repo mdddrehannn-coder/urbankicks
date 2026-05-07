@@ -5,11 +5,7 @@ const router = express.Router();
 
 router.get("/status", (_req, res) => {
   res.json({
-    provider: "supabase",
-    emailPassword: "configured-in-supabase-dashboard",
-    sessionStorage: "localStorage + refresh token",
-    profileCreation: "database trigger plus login fallback",
-    note: "Email provider enable/disable is controlled in Supabase Dashboard -> Authentication -> Providers."
+    status: "ok"
   });
 });
 

@@ -63,6 +63,27 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+async function readJsonResponse(res, fallback = "Request failed") {
+  const text = await res.text();
+  let payload = null;
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch (_error) {
+      const contentType = res.headers.get("content-type") || "unknown";
+      const preview = text.replace(/\s+/g, " ").trim().slice(0, 160);
+      throw new Error(`${fallback}. The server returned ${contentType}: ${preview || "non-JSON response"}`);
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(payload?.error || payload?.message || fallback);
+  }
+
+  return payload;
+}
+
 async function api(path, options = {}) {
   const headers = {
     ...authHeaders(),
@@ -70,9 +91,7 @@ async function api(path, options = {}) {
     ...(options.headers || {})
   };
   const res = await fetch(path, { ...options, headers });
-  const payload = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(payload?.error || payload?.message || "Request failed");
-  return payload;
+  return readJsonResponse(res);
 }
 
 async function getSupabaseClient() {
@@ -84,7 +103,10 @@ async function getSupabaseClient() {
       throw new Error("Supabase browser SDK failed to load.");
     }
 
-    const config = await fetch("/api/config/supabase").then((res) => res.json());
+    const configResponse = await fetch("/api/config/supabase", {
+      headers: { Accept: "application/json" }
+    });
+    const config = await readJsonResponse(configResponse, "Could not load store authentication settings");
     if (!config.url || !config.anonKey) {
       throw new Error("Supabase URL or anon key is missing.");
     }
@@ -579,7 +601,7 @@ async function wishlistPage() {
   const wishedProducts = products.filter((product) => wishlist.includes(product._id));
   app.innerHTML = `
     <section class="section">
-      ${sectionHead("Favorites", "Wishlist vault", getSession() ? "Synced to Supabase wishlist table." : "Login to sync wishlist across devices.")}
+      ${sectionHead("Favorites", "Wishlist vault", getSession() ? "Your saved sneakers are ready." : "Login to sync wishlist across devices.")}
       <div class="product-grid">${wishedProducts.map((product) => productCard(product, wishlist)).join("") || '<article class="mini-card"><h3>No favorites yet</h3><p class="meta">Tap the heart on a sneaker to save it.</p></article>'}</div>
     </section>
   `;
@@ -716,7 +738,7 @@ async function profilePage() {
   ]);
   app.innerHTML = `
     <section class="section">
-      ${sectionHead("Profile", "Your account", "Persistent Supabase session, saved orders, and transaction records.")}
+      ${sectionHead("Profile", "Your account", "Saved orders, checkout details, and transaction records.")}
       <div class="schema-grid">
         <article class="mini-card"><h3>${safe(session.user?.user_metadata?.name || "Urban Kicks Member")}</h3><p class="meta">${safe(session.user?.email || "")}</p><button class="button danger" onclick="logout()">Logout</button></article>
         <article class="mini-card"><h3>Order history</h3><p class="meta">${orders.length} saved orders</p></article>
@@ -732,11 +754,11 @@ async function profilePage() {
 function settingsPage() {
   app.innerHTML = `
     <section class="section">
-      ${sectionHead("Settings", "Store controls", "Supabase is configured through .env.local using NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.")}
+      ${sectionHead("Settings", "Store controls", "Manage your shopping preferences and checkout options.")}
       <div class="schema-grid">
         <article class="mini-card"><h3>Theme</h3><p class="meta">Toggle dark/light styling.</p><button class="button primary" onclick="toggleTheme()">Toggle theme</button></article>
         <article class="mini-card"><h3>Payment</h3><p class="meta">Cash on Delivery only.</p></article>
-        <article class="mini-card"><h3>Database</h3><p class="meta">Tables: users, products, wishlist, orders, transactions.</p></article>
+        <article class="mini-card"><h3>Account data</h3><p class="meta">Saved products, orders, and profile details.</p></article>
       </div>
     </section>
   `;
@@ -845,7 +867,7 @@ async function saveProduct(event) {
     headers: authHeaders(),
     body: formData
   }).then(async (res) => {
-    if (!res.ok) throw new Error((await res.json()).message || "Could not save product");
+    await readJsonResponse(res, "Could not save product");
   });
   catalogCache = null;
   await adminPage();
@@ -864,7 +886,7 @@ async function updateOrderStatus(id, status) {
 function infoPage(title) {
   app.innerHTML = `
     <section class="section">
-      ${sectionHead("Urban Kicks", title, "Online shoe selling ecommerce website powered by Supabase.")}
+      ${sectionHead("Urban Kicks", title, "Online sneaker shopping built for fast drops and easy checkout.")}
       <div class="mini-card"><p class="meta">Update this section with production copy before launch.</p></div>
     </section>
   `;
