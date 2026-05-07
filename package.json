@@ -1,0 +1,30 @@
+{
+  "name": "urban-kicks",
+  "version": "1.0.0",
+  "description": "Modern shoe ecommerce website with Express, Supabase auth, wishlist, checkout, and COD orders.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "build": "node scripts/verify.js",
+    "vercel-build": "npm run build",
+    "seed": "node scripts/seed.js"
+  },
+  "keywords": [
+    "ecommerce",
+    "shoes",
+    "express",
+    "supabase"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

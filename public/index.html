@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Urban Kicks | Online Sneaker Store</title>
+    <meta
+      name="description"
+      content="Urban Kicks is a premium online sneaker store with secure accounts, wishlist, cart, order history, and Supabase-powered ecommerce."
+    >
+    <meta name="theme-color" content="#070707">
+    <link rel="icon" type="image/png" href="/assets/urban-kicks-logo.png">
+    <link rel="apple-touch-icon" href="/assets/urban-kicks-logo.png">
+    <link rel="preconnect" href="https://images.unsplash.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@500;600;700;800;900&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand-mark" href="#/" aria-label="Urban Kicks home">
+        <img class="brand-logo" src="/assets/urban-kicks-logo.png" alt="Urban Kicks logo">
+        <span class="brand-text">
+          <strong>Urban Kicks</strong>
+          <small>Online Sneaker Store</small>
+        </span>
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">Menu</button>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="#/">Home</a>
+        <a href="#/categories">Categories</a>
+        <a href="#/wishlist">Wishlist <span id="wishCount" class="cart-count alt">0</span></a>
+        <a href="#/auth">Login/Register</a>
+        <a href="#/profile">Profile</a>
+        <a href="#/settings">Settings</a>
+        <a href="#/cart">Cart <span id="cartCount" class="cart-count">0</span></a>
+      </nav>
+    </header>
+
+    <main id="app" aria-live="polite"></main>
+
+    <footer class="footer">
+      <div class="footer-brand">
+        <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks logo">
+        <div>
+          <strong>Urban Kicks</strong>
+          <span>Premium online sneaker store built for new drops, wishlists, carts, and COD checkout.</span>
+        </div>
+      </div>
+      <div class="footer-grid">
+        <span>Contact: +91 00000 00000</span>
+        <span>Email: hello@urbankicks.example</span>
+        <span>Instagram: @urbankicks</span>
+        <span>Address: Streetwear District, Your City</span>
+        <a href="#/about">About Us</a>
+        <a href="#/terms">Terms & Conditions</a>
+        <a href="#/privacy">Privacy Policy</a>
+      </div>
+    </footer>
+
+    <script src="/vendor/supabase/supabase.js"></script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
