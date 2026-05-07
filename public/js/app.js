@@ -2,6 +2,7 @@ const app = document.getElementById("app");
 const cartCount = document.getElementById("cartCount");
 const wishCount = document.getElementById("wishCount");
 const navToggle = document.getElementById("navToggle");
+const toastRegion = document.getElementById("toastRegion");
 
 const CART_KEY = "urbanKicksCart";
 const SESSION_KEY = "urbanKicksSession";
@@ -30,6 +31,147 @@ const safe = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   '"': "&quot;",
   "'": "&#039;"
 }[char]));
+
+function errorToMessage(error, fallback = "Something went wrong. Please try again.") {
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  if (error instanceof Error && typeof error.message === "string" && error.message !== "[object Object]") {
+    return error.message;
+  }
+  if (typeof error.message === "string" && error.message !== "[object Object]") return error.message;
+  if (typeof error.error_description === "string") return error.error_description;
+  if (typeof error.error === "string") return error.error;
+  if (typeof error.msg === "string") return error.msg;
+  if (typeof error.details === "string") return error.details;
+  try {
+    const serialized = JSON.stringify(error);
+    return serialized && serialized !== "{}" ? serialized : fallback;
+  } catch (_jsonError) {
+    return fallback;
+  }
+}
+
+function notify(message, type = "info") {
+  const toast = document.createElement("div");
+  const normalizedMessage = errorToMessage(message, "Something went wrong. Please try again.");
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<strong>${type === "success" ? "Success" : type === "error" ? "Action needed" : "Urban Kicks"}</strong><span>${safe(normalizedMessage)}</span>`;
+  toastRegion.appendChild(toast);
+  window.setTimeout(() => toast.classList.add("show"), 20);
+  window.setTimeout(() => {
+    toast.classList.remove("show");
+    window.setTimeout(() => toast.remove(), 220);
+  }, 4200);
+}
+
+function sneakerPlaceholder(accent, label) {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680">
+      <defs>
+        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+          <stop stop-color="#ffffff"/>
+          <stop offset="1" stop-color="#d9d9d5"/>
+        </linearGradient>
+        <linearGradient id="accent" x1="0" x2="1">
+          <stop stop-color="${accent}"/>
+          <stop offset="1" stop-color="#111114"/>
+        </linearGradient>
+      </defs>
+      <rect width="900" height="680" rx="54" fill="url(#bg)"/>
+      <circle cx="710" cy="128" r="172" fill="${accent}" opacity="0.18"/>
+      <path d="M154 444c110 14 250 18 428 11 84-3 139-18 166-44 18-17 11-41-14-48-43-13-99-18-168-15-64-60-132-93-204-98-24-2-44 7-60 27l-48 61-104 50c-30 15-28 50 4 56Z" fill="#111114"/>
+      <path d="M260 346c52-52 103-79 154-81 61-3 110 29 151 83-120 1-221 1-305-2Z" fill="url(#accent)"/>
+      <path d="M162 434h586c-14 28-58 45-132 50-158 10-304 7-438-9-25-3-33-24-16-41Z" fill="#ffffff"/>
+      <path d="M223 477h462" stroke="#111114" stroke-width="18" stroke-linecap="round"/>
+      <path d="M472 298l-92 92M528 318l-72 72M584 342l-52 52" stroke="#ffffff" stroke-width="15" stroke-linecap="round"/>
+      <text x="70" y="110" fill="#111114" font-family="Arial Black,Arial,sans-serif" font-size="44">${label}</text>
+      <text x="70" y="158" fill="${accent}" font-family="Arial Black,Arial,sans-serif" font-size="28">URBAN KICKS INDIA</text>
+    </svg>
+  `)}`;
+}
+
+const placeholderProducts = [
+  {
+    _id: "placeholder-speed-runner",
+    name: "Velocity Street Runner",
+    brand: "Urban Kicks",
+    category: "Speed Runners",
+    price: 5999,
+    discountPercent: 35,
+    stock: 24,
+    sizes: ["7", "8", "9", "10"],
+    colors: ["Black", "Red"],
+    color: "Black",
+    imageUrl: sneakerPlaceholder("#e30613", "RUNNER"),
+    gallery: [sneakerPlaceholder("#e30613", "RUNNER")],
+    description: "A lightweight city sneaker placeholder designed to preview future Urban Kicks drops.",
+    featured: true,
+    trending: true,
+    rating: 4.8,
+    reviewCount: 42,
+    deliveryEstimate: "2-5 business days"
+  },
+  {
+    _id: "placeholder-hero-hightop",
+    name: "Midnight Hero High Top",
+    brand: "Urban Kicks",
+    category: "Hero High Tops",
+    price: 7499,
+    discountPercent: 28,
+    stock: 18,
+    sizes: ["7", "8", "9", "10", "11"],
+    colors: ["White", "Red"],
+    color: "White",
+    imageUrl: sneakerPlaceholder("#b90009", "HIGH TOP"),
+    gallery: [sneakerPlaceholder("#b90009", "HIGH TOP")],
+    description: "A premium high-top placeholder with bold streetwear energy.",
+    featured: true,
+    trending: true,
+    rating: 4.7,
+    reviewCount: 36,
+    deliveryEstimate: "2-5 business days"
+  },
+  {
+    _id: "placeholder-cloud-comfort",
+    name: "Cloudline Comfort Knit",
+    brand: "Urban Kicks",
+    category: "Cloud Comfort",
+    price: 5299,
+    discountPercent: 22,
+    stock: 32,
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Grey", "Black"],
+    color: "Grey",
+    imageUrl: sneakerPlaceholder("#6b7280", "COMFORT"),
+    gallery: [sneakerPlaceholder("#6b7280", "COMFORT")],
+    description: "A soft everyday placeholder for comfort-first sneaker uploads.",
+    featured: true,
+    trending: false,
+    rating: 4.6,
+    reviewCount: 29,
+    deliveryEstimate: "2-5 business days"
+  },
+  {
+    _id: "placeholder-arcade-trainer",
+    name: "Arcade Grip Trainer",
+    brand: "Urban Kicks",
+    category: "Arcade Trainers",
+    price: 6799,
+    discountPercent: 30,
+    stock: 20,
+    sizes: ["7", "8", "9", "10"],
+    colors: ["Black", "White"],
+    color: "Black",
+    imageUrl: sneakerPlaceholder("#222222", "TRAINER"),
+    gallery: [sneakerPlaceholder("#222222", "TRAINER")],
+    description: "A training sneaker placeholder with gym-to-street styling.",
+    featured: false,
+    trending: true,
+    rating: 4.5,
+    reviewCount: 31,
+    deliveryEstimate: "2-5 business days"
+  }
+];
 
 function getStore(key, fallback) {
   return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
@@ -78,7 +220,7 @@ async function readJsonResponse(res, fallback = "Request failed") {
   }
 
   if (!res.ok) {
-    throw new Error(payload?.error || payload?.message || fallback);
+    throw new Error(errorToMessage(payload?.error || payload?.message || payload, fallback));
   }
 
   return payload;
@@ -154,7 +296,7 @@ async function upsertUserProfile(user, extra = {}) {
 
 function showAuthError(error, fallback = "Authentication failed") {
   console.error("[auth]", error);
-  alert(error?.message || fallback);
+  notify(errorToMessage(error, fallback), "error");
 }
 
 async function refreshSession() {
@@ -254,7 +396,13 @@ function sectionHead(eyebrow, title, copy, action = "") {
 
 async function getProducts() {
   if (catalogCache) return catalogCache;
-  catalogCache = await api("/api/products");
+  try {
+    const rows = await api("/api/products");
+    catalogCache = Array.isArray(rows) && rows.length ? rows : placeholderProducts;
+  } catch (error) {
+    console.warn("[catalog] using storefront placeholders:", errorToMessage(error));
+    catalogCache = placeholderProducts;
+  }
   return catalogCache;
 }
 
@@ -313,13 +461,13 @@ async function homePage() {
               <img src="/assets/urban-kicks-logo.png" alt="">
             </span>
             <div>
-              <span>Urban Kicks</span>
+              <span>Urban Kicks India</span>
               <small>Luxury streetwear sneaker store</small>
             </div>
           </div>
           <p class="eyebrow">New season drops / Limited street heat</p>
-          <h1>Urban Kicks</h1>
-          <p>Premium sneakers for city movement, night runs, and everyday streetwear. Clean checkout, saved favorites, fast discovery, and launch-ready collections.</p>
+          <h1>Urban Kicks India</h1>
+          <p>Premium sneakers for city movement, night runs, and everyday streetwear. Curated drops, smooth checkout, saved favorites, and launch-ready collections for India.</p>
           <form class="search-panel" id="searchForm">
             <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"></path></svg></span>
             <input name="q" placeholder="Search shoes, brands, drops..." aria-label="Search shoes">
@@ -363,6 +511,18 @@ async function homePage() {
       ${sectionHead("Categories", "Choose your lane", "Four signature collections built for running, comfort, training, and high-top style.", '<a class="button ghost" href="#/categories">View categories</a>')}
       <div class="category-grid">${categorySeed.map((category) => categoryCard(category, products)).join("")}</div>
     </section>
+    <section class="premium-drop-section">
+      <div class="premium-drop-card">
+        <p class="eyebrow">Premium Drop</p>
+        <h2>Curated sneaker energy for every street rotation.</h2>
+        <p>Discover limited-inspired silhouettes, clean everyday runners, bold high tops, and comfort-first trainers. Urban Kicks India is built for sneaker lovers who want style, confidence, and a polished shopping experience from first scroll to final checkout.</p>
+        <div class="drop-metrics">
+          <span><strong>50%</strong> Launch offers</span>
+          <span><strong>COD</strong> Available</span>
+          <span><strong>24/7</strong> Wishlist access</span>
+        </div>
+      </div>
+    </section>
     <section class="section">
       ${sectionHead("Popular Brands", "Shop by label", "Browse all shoe varieties by brand.")}
       <div class="brand-grid">
@@ -374,6 +534,10 @@ async function homePage() {
           </a>
         `).join("")}
       </div>
+    </section>
+    <section class="section">
+      ${sectionHead("About Us", "For the culture", "We are passionate about premium sneakers and streetwear culture. Urban Kicks brings curated sneaker collections designed for comfort, style, and individuality.")}
+      <div class="about-card"><p>Urban Kicks India blends modern ecommerce with the energy of sneaker drops, making it easy to discover, save, and shop pairs that match your personal style.</p></div>
     </section>
     <section class="section band">
       ${sectionHead("Customer Reviews", "Worn by the city", "Real shopping moments from Urban Kicks customers.")}
@@ -398,7 +562,7 @@ async function homePage() {
           <h2>Get first access to new Urban Kicks releases.</h2>
           <p>Join the list for launch alerts, limited discounts, and curated sneaker edits.</p>
         </div>
-        <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Thanks. You are on the Urban Kicks drop list.');">
+        <form class="newsletter-form" onsubmit="event.preventDefault(); notify('You are on the Urban Kicks India drop list.', 'success'); this.reset();">
           <input type="email" required placeholder="you@example.com" aria-label="Email address">
           <button class="button primary" type="submit">Notify me</button>
         </form>
@@ -478,7 +642,10 @@ async function productPage(id) {
 async function addToCart(id) {
   const products = await getProducts();
   const product = products.find((item) => item._id === id);
-  if (!product || product.stock < 1) return alert("This product is out of stock.");
+  if (!product || product.stock < 1) {
+    notify("This sneaker is currently out of stock.", "error");
+    return;
+  }
   const size = document.querySelector("input[name='size']:checked")?.value || product.sizes[0];
   const color = document.querySelector("input[name='color']:checked")?.value || product.color;
   const cart = getCart();
@@ -498,6 +665,7 @@ async function addToCart(id) {
     });
   }
   saveCart(cart);
+  notify(`${product.name} added to cart.`, "success");
 }
 
 async function quickAdd(id) {
@@ -522,9 +690,10 @@ async function toggleWishlist(id) {
       if (exists) await api(`/api/wishlist/${id}`, { method: "DELETE" });
       else await api("/api/wishlist", { method: "POST", body: JSON.stringify({ productId: id }) });
     } catch (error) {
-      alert(error.message);
+      notify(errorToMessage(error, "Could not update wishlist."), "error");
     }
   }
+  notify(exists ? "Removed from wishlist." : "Saved to wishlist.", "success");
   router();
 }
 
@@ -676,6 +845,8 @@ function authPage() {
       <div class="panel">
         <p class="eyebrow">Login</p>
         <h1>Welcome back</h1>
+        <button class="button google-button" type="button" onclick="loginWithGoogle()">Continue with Google</button>
+        <div class="auth-divider"><span>or use email</span></div>
         <form class="form" id="loginForm">
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" required placeholder="Your password"></label>
@@ -717,6 +888,7 @@ async function login(event) {
     wishlistCache = null;
     await getWishlist();
     console.log(`[auth] login success for ${data.email}`);
+    notify("Welcome back to Urban Kicks India.", "success");
     location.hash = "#/profile";
   } catch (error) {
     showAuthError(error, "Invalid login. Check your email and password.");
@@ -747,15 +919,35 @@ async function signup(event) {
       await upsertUserProfile(authData.user, data);
       wishlistCache = null;
       console.log(`[auth] signup success with active session for ${data.email}`);
+      notify("Your Urban Kicks account is ready.", "success");
       location.hash = "#/profile";
       return;
     }
 
     console.log("[auth] signup created user but email confirmation is required");
-    alert("Signup successful. Please check your email to confirm your account, then log in.");
+    notify("Signup successful. Please check your email to confirm your account, then log in.", "success");
     location.hash = "#/auth";
   } catch (error) {
     showAuthError(error, "Signup failed. Check your details and try again.");
+  }
+}
+
+async function loginWithGoogle() {
+  try {
+    const client = await getSupabaseClient();
+    const { error } = await client.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/#/profile`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent"
+        }
+      }
+    });
+    if (error) throw error;
+  } catch (error) {
+    showAuthError(error, "Google login could not be started.");
   }
 }
 
@@ -774,6 +966,7 @@ async function logout() {
   wishlistCache = null;
   renderCounters();
   window.dispatchEvent(new CustomEvent("urban-kicks-auth", { detail: { event: "SIGNED_OUT", session: null } }));
+  notify("You have been logged out.", "success");
   location.hash = "#/";
 }
 
@@ -908,7 +1101,10 @@ async function saveProduct(event) {
   const form = event.target;
   const formData = new FormData(form);
   const id = formData.get("id");
-  if (!id && !formData.get("image").name) return alert("Please upload a product image.");
+  if (!id && !formData.get("image").name) {
+    notify("Please upload a product image.", "error");
+    return;
+  }
   if (id && !formData.get("image").name) formData.delete("image");
   await fetch(id ? `/api/products/${id}` : "/api/products", {
     method: id ? "PUT" : "POST",
@@ -932,10 +1128,31 @@ async function updateOrderStatus(id, status) {
 }
 
 function infoPage(title) {
+  const pages = {
+    About: {
+      eyebrow: "About Urban Kicks India",
+      title: "Built for sneaker culture",
+      copy: "We are passionate about premium sneakers and streetwear culture. Urban Kicks India brings curated sneaker collections designed for comfort, style, and individuality.",
+      detail: "From daily rotation pairs to statement drops, every collection is shaped for people who want their footwear to feel personal, polished, and ready for the city."
+    },
+    Terms: {
+      eyebrow: "Terms & Conditions",
+      title: "Clear shopping terms",
+      copy: "Orders, returns, stock availability, delivery timelines, and payment details are handled with transparent ecommerce policies.",
+      detail: "Please review product details, size choices, and delivery information before placing an order. Final terms can be updated as Urban Kicks India launches new services."
+    },
+    Privacy: {
+      eyebrow: "Privacy Policy",
+      title: "Your data stays protected",
+      copy: "Account, wishlist, cart, and order details are used only to support your Urban Kicks India shopping experience.",
+      detail: "Customer data should be handled securely and only for checkout, order updates, account access, and store communication."
+    }
+  };
+  const page = pages[title] || pages.About;
   app.innerHTML = `
     <section class="section">
-      ${sectionHead("Urban Kicks", title, "Online sneaker shopping built for fast drops and easy checkout.")}
-      <div class="mini-card"><p class="meta">Update this section with production copy before launch.</p></div>
+      ${sectionHead(page.eyebrow, page.title, page.copy)}
+      <div class="about-card"><p>${safe(page.detail)}</p></div>
     </section>
   `;
 }
@@ -988,6 +1205,8 @@ window.removeItem = removeItem;
 window.swapImage = swapImage;
 window.toggleTheme = toggleTheme;
 window.logout = logout;
+window.loginWithGoogle = loginWithGoogle;
+window.notify = notify;
 window.editProduct = editProduct;
 window.resetAdminForm = resetAdminForm;
 window.deleteProduct = deleteProduct;
