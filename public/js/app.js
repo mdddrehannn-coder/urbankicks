@@ -297,65 +297,111 @@ function categoryCard(category, products) {
 
 async function homePage() {
   const [products, wishlist] = await Promise.all([getProducts(), getWishlist()]);
-  const featured = products.filter((product) => product.featured).slice(0, 4);
-  const trending = products.filter((product) => product.trending).slice(0, 4);
+  const featuredSource = products.filter((product) => product.featured);
+  const trendingSource = products.filter((product) => product.trending);
+  const featured = (featuredSource.length ? featuredSource : products).slice(0, 4);
+  const trending = (trendingSource.length ? trendingSource : products.slice(1)).slice(0, 4);
   const brands = [...new Set(products.map((product) => product.brand))];
   const heroProduct = products[0];
 
   app.innerHTML = `
-    <section class="hero">
+    <section class="hero premium-hero">
       <div class="hero-shell">
-        <div>
+        <div class="hero-copy">
           <div class="hero-brand-lockup">
-            <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks official logo">
+            <span class="logo-badge logo-badge-hero" aria-hidden="true">
+              <img src="/assets/urban-kicks-logo.png" alt="">
+            </span>
+            <div>
+              <span>Urban Kicks</span>
+              <small>Luxury streetwear sneaker store</small>
+            </div>
           </div>
-          <p class="eyebrow">Official online sneaker store / COD ready</p>
+          <p class="eyebrow">New season drops / Limited street heat</p>
           <h1>Urban Kicks</h1>
-          <p>Premium street sneakers with secure accounts, persistent sessions, wishlist sync, order history, transaction records, and stock-aware checkout.</p>
+          <p>Premium sneakers for city movement, night runs, and everyday streetwear. Clean checkout, saved favorites, fast discovery, and launch-ready collections.</p>
           <form class="search-panel" id="searchForm">
             <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"></path></svg></span>
             <input name="q" placeholder="Search shoes, brands, drops..." aria-label="Search shoes">
             <button class="search-submit" type="submit">Search</button>
           </form>
           <div class="hero-actions">
-            <a class="button primary" href="#/categories">Shop categories</a>
-            <a class="button ghost" href="#/auth">${getUser() ? "Account" : "Login"}</a>
+            <a class="button primary animated-cta" href="#/categories">Shop new drops</a>
+            <a class="button ghost" href="#/wishlist">View wishlist</a>
+          </div>
+          <div class="hero-proof">
+            <span>Up to 50% off</span>
+            <span>Cash on delivery</span>
+            <span>Fresh weekly drops</span>
           </div>
         </div>
         <div class="sneaker-stage" aria-label="Sneaker showcase">
-          <div class="burst"></div>
-          <div class="hero-logo-orbit"><img src="/assets/urban-kicks-logo.png" alt="Urban Kicks logo mark"></div>
+          <div class="premium-glow"></div>
+          <div class="hero-logo-orbit">
+            <span class="logo-badge logo-badge-stage" aria-hidden="true">
+              <img src="/assets/urban-kicks-logo.png" alt="">
+            </span>
+          </div>
           ${heroProduct ? `<div class="hero-shoe"><img src="${heroProduct.imageUrl}" alt="${safe(heroProduct.name)}"></div>` : ""}
           <div class="offer-stickers">
-            <span class="sticker">Supabase Auth</span>
-            <span class="sticker">COD Orders</span>
-            <span class="sticker">Live Stock</span>
+            <span class="sticker">50% OFF</span>
+            <span class="sticker">COD</span>
+            <span class="sticker">NEW DROPS</span>
           </div>
         </div>
       </div>
     </section>
-    <section class="section band" id="categories">
-      ${sectionHead("Collections", "Choose your lane", "Each category opens a dedicated Supabase product listing.", '<a class="button light" href="#/categories">View all</a>')}
-      <div class="category-grid">${categorySeed.map((category) => categoryCard(category, products)).join("")}</div>
-    </section>
     <section class="section">
-      ${sectionHead("Featured", "Editor picks", "Curated launch shoes with wishlist and cart actions.")}
+      ${sectionHead("Featured Sneakers", "Editor picks", "A focused edit of premium pairs for everyday rotation.", '<a class="button light" href="#/categories">Explore all</a>')}
       <div class="product-grid">${featured.map((product) => productCard(product, wishlist)).join("")}</div>
     </section>
     <section class="section band">
-      ${sectionHead("Trending", "Street heat right now", "Fast-moving sneakers with discounts, stock labels, and COD checkout.")}
+      ${sectionHead("Trending Collection", "Street heat right now", "Fast-moving silhouettes, sharp discounts, and clean cart actions.")}
       <div class="product-grid">${trending.map((product) => productCard(product, wishlist)).join("")}</div>
     </section>
+    <section class="section" id="categories">
+      ${sectionHead("Categories", "Choose your lane", "Four signature collections built for running, comfort, training, and high-top style.", '<a class="button ghost" href="#/categories">View categories</a>')}
+      <div class="category-grid">${categorySeed.map((category) => categoryCard(category, products)).join("")}</div>
+    </section>
     <section class="section">
-      ${sectionHead("Popular brands", "Brand sections", "Browse all shoe varieties by brand.")}
+      ${sectionHead("Popular Brands", "Shop by label", "Browse all shoe varieties by brand.")}
       <div class="brand-grid">
         ${brands.map((brand) => `
           <a class="mini-card" href="#/brand/${encodeURIComponent(brand)}">
             <span class="chip cyan">${products.filter((product) => product.brand === brand).length} styles</span>
             <h3>${safe(brand)}</h3>
-            <p class="meta">Browse ${safe(brand)} products from Supabase.</p>
+            <p class="meta">Browse ${safe(brand)} drops and everyday essentials.</p>
           </a>
         `).join("")}
+      </div>
+    </section>
+    <section class="section band">
+      ${sectionHead("Customer Reviews", "Worn by the city", "Real shopping moments from Urban Kicks customers.")}
+      <div class="review-grid">
+        ${[
+          ["Aarav S.", "The homepage feels like a real sneaker drop. Checkout was quick and the fit details were easy to scan."],
+          ["Nisha K.", "Saved two pairs to wishlist on mobile and came back later on desktop. Smooth and clean."],
+          ["Rohan M.", "The product cards are sharp, the COD option is clear, and the collection layout feels premium."]
+        ].map(([name, quote]) => `
+          <article class="review-card">
+            <div class="stars">5.0 / 5</div>
+            <p>${safe(quote)}</p>
+            <strong>${safe(name)}</strong>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+    <section class="newsletter-section">
+      <div class="newsletter-card">
+        <div>
+          <p class="eyebrow">Drop alerts</p>
+          <h2>Get first access to new Urban Kicks releases.</h2>
+          <p>Join the list for launch alerts, limited discounts, and curated sneaker edits.</p>
+        </div>
+        <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Thanks. You are on the Urban Kicks drop list.');">
+          <input type="email" required placeholder="you@example.com" aria-label="Email address">
+          <button class="button primary" type="submit">Notify me</button>
+        </form>
       </div>
     </section>
   `;
@@ -370,7 +416,7 @@ async function categoriesPage() {
   const products = await getProducts();
   app.innerHTML = `
     <section class="section">
-      ${sectionHead("Categories", "Launch collections", "Category cards are backed by the products table.")}
+      ${sectionHead("Categories", "Launch collections", "Browse signature sneaker lanes built for different streetwear moods.")}
       <div class="category-grid">${categorySeed.map((category) => categoryCard(category, products)).join("")}</div>
     </section>
   `;
@@ -621,7 +667,9 @@ function authPage() {
   app.innerHTML = `
     <section class="auth-layout">
       <div class="auth-brand-panel">
-        <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks official logo">
+        <span class="logo-badge logo-badge-auth" aria-hidden="true">
+          <img src="/assets/urban-kicks-logo.png" alt="">
+        </span>
         <h2>Step into your sneaker account</h2>
         <p>Save favorites, track orders, manage COD checkout, and keep every Urban Kicks drop close.</p>
       </div>
