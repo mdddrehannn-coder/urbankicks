@@ -174,7 +174,12 @@ const placeholderProducts = [
 ];
 
 function getStore(key, fallback) {
-  return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+  try {
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+  } catch (_error) {
+    localStorage.removeItem(key);
+    return fallback;
+  }
 }
 
 function setStore(key, value) {
@@ -266,7 +271,12 @@ async function getSupabaseClient() {
     return supabaseClient;
   })();
 
-  return supabaseClientPromise;
+  try {
+    return await supabaseClientPromise;
+  } catch (error) {
+    supabaseClientPromise = null;
+    throw error;
+  }
 }
 
 async function syncSessionFromSupabase(session) {
@@ -290,11 +300,13 @@ async function upsertUserProfile(user, extra = {}) {
     });
     console.log("[auth] user profile synced");
   } catch (error) {
+    console.error(error);
     console.warn("[auth] profile sync failed", error.message);
   }
 }
 
 function showAuthError(error, fallback = "Authentication failed") {
+  console.error(error);
   console.error("[auth]", error);
   notify(errorToMessage(error, fallback), "error");
 }
@@ -303,7 +315,10 @@ async function refreshSession() {
   try {
     const client = await getSupabaseClient();
     const { data, error } = await client.auth.refreshSession();
-    if (error) throw error;
+    if (error) {
+      console.error(error);
+      throw new Error(error.message || "Invalid login. Check your email and password.");
+    }
     if (data.session) {
       await syncSessionFromSupabase(data.session);
       console.log("[auth] session refreshed");
@@ -327,8 +342,13 @@ async function verifySession() {
       return;
     }
     localStorage.removeItem(SESSION_KEY);
+    wishlistCache = null;
+    await renderCounters();
   } catch (error) {
     console.warn("[auth] session restore failed", error.message);
+    localStorage.removeItem(SESSION_KEY);
+    wishlistCache = null;
+    await renderCounters();
   }
 }
 
@@ -845,8 +865,7 @@ function authPage() {
       <div class="panel">
         <p class="eyebrow">Login</p>
         <h1>Welcome back</h1>
-        <button class="button google-button" type="button" onclick="loginWithGoogle()">Continue with Google</button>
-        <div class="auth-divider"><span>or use email</span></div>
+        <p class="auth-note">Use your email and password to access your wishlist, cart, and order history.</p>
         <form class="form" id="loginForm">
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" required placeholder="Your password"></label>
@@ -856,6 +875,7 @@ function authPage() {
       <div class="panel">
         <p class="eyebrow">Signup</p>
         <h1>Create account</h1>
+        <p class="auth-note">Create a secure Urban Kicks India account with email and password.</p>
         <form class="form" id="signupForm">
           <label>Name<input name="name" required placeholder="Your name"></label>
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
@@ -872,6 +892,10 @@ function authPage() {
 
 async function login(event) {
   event.preventDefault();
+  const submitButton = event.target.querySelector("button[type='submit']");
+  const originalText = submitButton.textContent;
+  submitButton.disabled = true;
+  submitButton.textContent = "Logging in...";
   const data = Object.fromEntries(new FormData(event.target));
   try {
     const client = await getSupabaseClient();
@@ -891,12 +915,19 @@ async function login(event) {
     notify("Welcome back to Urban Kicks India.", "success");
     location.hash = "#/profile";
   } catch (error) {
-    showAuthError(error, "Invalid login. Check your email and password.");
+    showAuthError(error, error.message || "Invalid login. Check your email and password.");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = originalText;
   }
 }
 
 async function signup(event) {
   event.preventDefault();
+  const submitButton = event.target.querySelector("button[type='submit']");
+  const originalText = submitButton.textContent;
+  submitButton.disabled = true;
+  submitButton.textContent = "Creating...";
   const data = Object.fromEntries(new FormData(event.target));
   try {
     const client = await getSupabaseClient();
@@ -909,10 +940,13 @@ async function signup(event) {
           name: data.name,
           mobile: data.mobile
         },
-        emailRedirectTo: `${window.location.origin}/#/auth`
+        emailRedirectTo: window.location.origin
       }
     });
-    if (error) throw error;
+    if (error) {
+      console.error(error);
+      throw new Error(error.message || "Signup failed. Check your details and try again.");
+    }
 
     if (authData.session) {
       await syncSessionFromSupabase(authData.session);
@@ -928,26 +962,10 @@ async function signup(event) {
     notify("Signup successful. Please check your email to confirm your account, then log in.", "success");
     location.hash = "#/auth";
   } catch (error) {
-    showAuthError(error, "Signup failed. Check your details and try again.");
-  }
-}
-
-async function loginWithGoogle() {
-  try {
-    const client = await getSupabaseClient();
-    const { error } = await client.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/#/profile`,
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent"
-        }
-      }
-    });
-    if (error) throw error;
-  } catch (error) {
-    showAuthError(error, "Google login could not be started.");
+    showAuthError(error, error.message || "Signup failed. Check your details and try again.");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = originalText;
   }
 }
 
@@ -1205,7 +1223,6 @@ window.removeItem = removeItem;
 window.swapImage = swapImage;
 window.toggleTheme = toggleTheme;
 window.logout = logout;
-window.loginWithGoogle = loginWithGoogle;
 window.notify = notify;
 window.editProduct = editProduct;
 window.resetAdminForm = resetAdminForm;

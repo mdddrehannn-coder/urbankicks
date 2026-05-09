@@ -42,6 +42,7 @@ async function signupHandler(req, res) {
         token: result.access_token,
         body: profilePayload(result.user, req.body)
       }).catch((profileError) => {
+        console.error(profileError);
         console.warn("[auth] profile upsert skipped:", profileError.message);
       });
     }
@@ -49,8 +50,9 @@ async function signupHandler(req, res) {
     console.log(`[auth] signup accepted for ${req.body.email}`);
     res.status(201).json(result);
   } catch (error) {
+    console.error(error);
     console.error("[auth] signup failed:", error.message);
-    res.status(400).json({ message: "Could not sign up", error: error.message });
+    res.status(400).json({ message: error.message, error: error.message });
   }
 }
 
@@ -79,6 +81,7 @@ router.post("/login", async (req, res) => {
         token: result.access_token,
         body: profilePayload(result.user, req.body)
       }).catch((profileError) => {
+        console.error(profileError);
         console.warn("[auth] profile sync skipped:", profileError.message);
       });
     }
@@ -86,8 +89,9 @@ router.post("/login", async (req, res) => {
     console.log(`[auth] login success for ${email}`);
     res.json(result);
   } catch (error) {
+    console.error(error);
     console.error("[auth] login failed:", error.message);
-    res.status(401).json({ message: "Could not log in", error: error.message });
+    res.status(401).json({ message: error.message, error: error.message });
   }
 });
 
@@ -104,8 +108,9 @@ router.post("/refresh", async (req, res) => {
 
     res.json(result);
   } catch (error) {
+    console.error(error);
     console.error("[auth] refresh failed:", error.message);
-    res.status(401).json({ message: "Could not refresh session", error: error.message });
+    res.status(401).json({ message: error.message, error: error.message });
   }
 });
 
@@ -125,8 +130,9 @@ router.post("/profile", async (req, res) => {
     console.log(`[auth] profile synced for ${user.email || user.id}`);
     res.status(201).json(rows[0] || profilePayload(user, req.body));
   } catch (error) {
+    console.error(error);
     console.error("[auth] profile sync failed:", error.message);
-    res.status(400).json({ message: "Could not sync profile", error: error.message });
+    res.status(400).json({ message: error.message, error: error.message });
   }
 });
 
@@ -139,7 +145,8 @@ router.post("/logout", async (req, res) => {
     console.log("[auth] logout success");
     res.json({ message: "Logged out" });
   } catch (error) {
-    res.status(400).json({ message: "Could not log out", error: error.message });
+    console.error(error);
+    res.status(400).json({ message: error.message, error: error.message });
   }
 });
 
@@ -149,12 +156,14 @@ router.get("/me", async (req, res) => {
     const user = await getAuthUser(token);
     if (!user) return res.status(401).json({ message: "Not authenticated" });
     const profiles = await request(`/rest/v1/users?select=*&id=eq.${user.id}&limit=1`, { token }).catch((profileError) => {
+      console.error(profileError);
       console.warn("[auth] profile read skipped:", profileError.message);
       return [];
     });
     res.json({ user, profile: profiles[0] || null });
   } catch (error) {
-    res.status(401).json({ message: "Not authenticated", error: error.message });
+    console.error(error);
+    res.status(401).json({ message: error.message, error: error.message });
   }
 });
 

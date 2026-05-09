@@ -26,10 +26,24 @@ app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/transactions", transactionRoutes);
 
 app.get("/api/config/supabase", (_req, res) => {
-  res.json({
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey
-  });
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({
+        message: "Authentication is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel."
+      });
+    }
+
+    res.json({
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Could not load authentication settings",
+      error: error.message
+    });
+  }
 });
 
 app.get("/api/config/payment", (_req, res) => {
