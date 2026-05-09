@@ -54,15 +54,16 @@ Open `http://localhost:5000`.
 - `GET /api/products` lists products and supports `brand`, `category`, and `q` filters.
 - `GET /api/products/:id` gets product detail.
 - `POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id` manage products.
-- `POST /api/auth/signup` creates a Supabase account.
-- `POST /api/auth/login` logs in with Supabase Auth.
+- `POST /api/auth/signup` is retained for compatibility, but the storefront uses browser Email OTP auth.
+- `POST /api/auth/login` is retained for compatibility, but the storefront uses browser Email OTP auth.
 - `POST /api/auth/logout` logs out.
 - `POST /api/auth/refresh` refreshes persistent sessions.
 - `GET /api/auth/status` checks auth wiring.
 - `GET /api/auth/me` reads the current Supabase user.
-- Frontend auth now uses the official browser Supabase client methods:
-  - `supabase.auth.signUp()`
-  - `supabase.auth.signInWithPassword()`
+- Frontend auth uses manual 6-digit Email OTP with the official browser Supabase client methods:
+  - `supabase.auth.signInWithOtp()`
+  - `supabase.auth.verifyOtp()`
+  - `supabase.auth.updateUser()` to save the password after OTP verification
   - `supabase.auth.signOut()`
   - `supabase.auth.getSession()`
   - `supabase.auth.onAuthStateChange()`

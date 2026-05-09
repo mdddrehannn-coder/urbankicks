@@ -8,6 +8,7 @@ const CART_KEY = "urbanKicksCart";
 const SESSION_KEY = "urbanKicksSession";
 const WISH_KEY = "urbanKicksWishlist";
 const THEME_KEY = "urbanKicksTheme";
+const EMAIL_OTP_LENGTH = 6;
 const EMAIL_AUTH_COOLDOWN_SECONDS = 60;
 
 let catalogCache = null;
@@ -16,6 +17,8 @@ let authRefreshTimer = null;
 let supabaseClient = null;
 let supabaseClientPromise = null;
 let emailAuthState = {
+  email: "",
+  profileData: null,
   cooldownUntil: 0,
   timer: null,
   inFlight: false
@@ -61,11 +64,14 @@ function authErrorMessage(error, fallback = "Authentication failed. Please try a
   const message = errorToMessage(error, fallback);
   const lower = message.toLowerCase();
 
-  if (lower.includes("invalid login credentials")) return "Invalid email or password. Please check your details and try again.";
-  if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
-    return "Please verify your email before logging in. Check your inbox for the Urban Kicks verification link.";
+  if ((lower.includes("invalid") && lower.includes("otp")) || (lower.includes("invalid") && lower.includes("token"))) {
+    return "Invalid OTP. Please check the 6-digit email code and try again.";
   }
-  if (lower.includes("expired")) return "This email verification link has expired. Please request a new one.";
+  if (lower.includes("invalid login credentials")) return "Invalid email OTP. Please request a fresh code and try again.";
+  if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
+    return "Please verify your email with the 6-digit OTP sent to your inbox.";
+  }
+  if (lower.includes("expired")) return "This email OTP has expired. Please request a new code.";
   if (lower.includes("too many") || lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
     return "Too many email requests. Please wait a minute before trying again.";
   }
@@ -299,7 +305,7 @@ async function getSupabaseClient() {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
         storageKey: "urban-kicks-supabase-auth"
       }
     });
@@ -354,7 +360,7 @@ async function refreshSession() {
     const { data, error } = await client.auth.refreshSession();
     if (error) {
       console.error(error);
-      throw new Error(error.message || "Session expired. Please verify your phone number again.");
+      throw new Error(error.message || "Session expired. Please verify your email again.");
     }
     if (data.session) {
       await syncSessionFromSupabase(data.session);
@@ -897,56 +903,55 @@ function authPage() {
           <img src="/assets/urban-kicks-logo.png" alt="">
         </span>
         <h2>Urban Kicks access</h2>
-        <p>Secure your wishlist, cart, COD checkout, and drop history with verified email access.</p>
+        <p>Secure your wishlist, cart, COD checkout, and drop history with a 6-digit code sent to your email.</p>
       </div>
       <div class="panel auth-primary-panel">
         <div class="auth-panel-logo">
           <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks">
         </div>
-        <p class="eyebrow">Primary Login</p>
-        <h1>Email Login</h1>
-        <p class="auth-note">Use your verified email and password to access your Urban Kicks account.</p>
-        <form class="form email-auth-form" id="loginForm">
+        <p class="eyebrow">Primary Auth</p>
+        <h1>Email OTP Access</h1>
+        <p class="auth-note">Enter your details, receive a 6-digit OTP in Gmail/email, then verify it here.</p>
+        <form class="form email-auth-form" id="emailOtpForm">
+          <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
           <label>Email Address<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
-          <label>Password<input name="password" type="password" required autocomplete="current-password" placeholder="Your password"></label>
-          <button class="button dark" type="submit">
-            <span class="button-label">Login</span>
+          <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
+          <label>Phone Number<input name="mobile" required type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
+          <button class="button dark" type="submit" id="sendEmailOtpButton">
+            <span class="button-label">Continue</span>
             <span class="button-spinner" aria-hidden="true"></span>
           </button>
-        </form>
-        <div class="auth-divider"><span>or</span></div>
-        <form class="form email-magic-form" id="magicLinkForm">
-          <label>Email Magic Link<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
-          <button class="button light" type="submit" id="magicLinkButton">
-            <span class="button-label">Send verification link</span>
-            <span class="button-spinner" aria-hidden="true"></span>
-          </button>
+          <div class="email-otp-panel" id="emailOtpPanel" hidden>
+            <p class="auth-note">Enter the 6-digit OTP sent to your email. The code expires in 60 seconds.</p>
+            <div class="otp-boxes" id="emailOtpBoxes" aria-label="Email one time password">
+              ${Array.from({ length: EMAIL_OTP_LENGTH }, (_, index) => `<input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Email OTP digit ${index + 1}" data-otp-index="${index}">`).join("")}
+            </div>
+            <input type="hidden" name="otp" id="emailOtpValue">
+            <button class="button primary email-otp-verify-button" type="button" id="verifyEmailOtpButton">
+              <span class="button-label">Verify OTP</span>
+              <span class="button-spinner" aria-hidden="true"></span>
+            </button>
+            <button class="button light email-otp-resend-button" type="button" id="resendEmailOtpButton" disabled>Resend OTP in 60s</button>
+          </div>
         </form>
       </div>
       <div class="panel auth-signup-panel">
         <div class="auth-panel-logo compact">
           <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks">
         </div>
-        <p class="eyebrow">Signup</p>
-        <h1>Create account</h1>
-        <p class="auth-note">Create your account with email verification. Phone is saved for future SMS features.</p>
-        <form class="form" id="signupForm">
-          <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
-          <label>Email Address<input name="email" required type="email" autocomplete="email" placeholder="you@example.com"></label>
-          <label>Password<input name="password" required type="password" minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
-          <label>Phone Number<input name="mobile" required type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
-          <button class="button primary" type="submit">
-            <span class="button-label">Create account</span>
-            <span class="button-spinner" aria-hidden="true"></span>
-          </button>
-        </form>
+        <p class="eyebrow">Email Code Only</p>
+        <h1>Manual email code</h1>
+        <p class="auth-note">Urban Kicks now uses 6-digit email OTP verification only. Your phone number is stored securely for future SMS features while today’s login stays email-based.</p>
+        <div class="auth-feature-list">
+          <span>6-digit Gmail/email OTP</span>
+          <span>60-second resend timer</span>
+          <span>Persistent Supabase session</span>
+          <span>Phone saved for future SMS</span>
+        </div>
       </div>
     </section>
   `;
-  document.getElementById("loginForm").addEventListener("submit", login);
-  document.getElementById("magicLinkForm").addEventListener("submit", sendMagicLink);
-  document.getElementById("signupForm").addEventListener("submit", signup);
-  updateEmailAuthCooldown();
+  setupEmailOtpAuth();
 }
 
 function setButtonLoading(button, loading, loadingLabel) {
@@ -966,20 +971,21 @@ function validEmail(value) {
 }
 
 function updateEmailAuthCooldown() {
-  const magicButton = document.getElementById("magicLinkButton");
-  const signupButton = document.querySelector("#signupForm button[type='submit']");
+  const sendButton = document.getElementById("sendEmailOtpButton");
+  const resendButton = document.getElementById("resendEmailOtpButton");
   const secondsLeft = Math.max(0, Math.ceil((emailAuthState.cooldownUntil - Date.now()) / 1000));
   const coolingDown = secondsLeft > 0;
 
-  [magicButton, signupButton].forEach((button) => {
+  [sendButton, resendButton].forEach((button) => {
     if (!button || button.classList.contains("is-loading")) return;
     const label = button.querySelector(".button-label");
     if (!button.dataset.originalLabel) {
       button.dataset.originalLabel = label?.textContent || button.textContent;
     }
-    button.disabled = coolingDown || emailAuthState.inFlight;
-    if (label && coolingDown) label.textContent = `Wait ${secondsLeft}s`;
-    if (label && !coolingDown) label.textContent = button.dataset.originalLabel;
+    button.disabled = emailAuthState.inFlight || coolingDown;
+    const nextLabel = button === resendButton && coolingDown ? `Resend OTP in ${secondsLeft}s` : button.dataset.originalLabel;
+    if (label) label.textContent = nextLabel;
+    else button.textContent = nextLabel;
   });
 
   if (emailAuthState.timer) window.clearTimeout(emailAuthState.timer);
@@ -993,176 +999,239 @@ function startEmailAuthCooldown() {
   updateEmailAuthCooldown();
 }
 
-async function guardEmailRequest(task) {
+function resetEmailOtpInputs() {
+  const otpInputs = [...document.querySelectorAll("#emailOtpBoxes input")];
+  otpInputs.forEach((input) => {
+    input.value = "";
+  });
+  const hiddenInput = document.getElementById("emailOtpValue");
+  if (hiddenInput) hiddenInput.value = "";
+  otpInputs[0]?.focus();
+}
+
+function syncEmailOtpValue() {
+  const otpInputs = [...document.querySelectorAll("#emailOtpBoxes input")];
+  const token = otpInputs.map((input) => input.value).join("");
+  const hiddenInput = document.getElementById("emailOtpValue");
+  if (hiddenInput) hiddenInput.value = token;
+  return token;
+}
+
+function getEmailOtpFormData(form) {
+  const data = Object.fromEntries(new FormData(form));
+  const mobile = normalizePhoneNumber(data.mobile);
+  const email = String(data.email || "").trim();
+  const name = String(data.name || "").trim();
+  const password = String(data.password || "");
+
+  if (!name) {
+    notify("Enter your full name to continue.", "error");
+    form.elements.name.focus();
+    return null;
+  }
+
+  if (!validEmail(email)) {
+    notify("Enter a valid email address.", "error");
+    form.elements.email.focus();
+    return null;
+  }
+
+  if (password.length < 6) {
+    notify("Password must be at least 6 characters.", "error");
+    form.elements.password.focus();
+    return null;
+  }
+
+  if (!mobile) {
+    notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
+    form.elements.mobile.focus();
+    return null;
+  }
+
+  return { name, email, password, mobile };
+}
+
+function setupEmailOtpAuth() {
+  const form = document.getElementById("emailOtpForm");
+  const verifyButton = document.getElementById("verifyEmailOtpButton");
+  const resendButton = document.getElementById("resendEmailOtpButton");
+  const otpInputs = [...document.querySelectorAll("#emailOtpBoxes input")];
+
+  if (!form || !verifyButton || !resendButton || otpInputs.length !== EMAIL_OTP_LENGTH) return;
+
+  form.addEventListener("submit", sendEmailOtp);
+  verifyButton.addEventListener("click", verifyEmailOtp);
+  resendButton.addEventListener("click", resendEmailOtp);
+
+  otpInputs.forEach((input, index) => {
+    input.addEventListener("input", (event) => {
+      const digit = event.target.value.replace(/\D/g, "").slice(-1);
+      event.target.value = digit;
+      syncEmailOtpValue();
+      if (digit && index < otpInputs.length - 1) otpInputs[index + 1].focus();
+      if (syncEmailOtpValue().length === EMAIL_OTP_LENGTH) verifyButton.focus();
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Backspace" && !event.target.value && index > 0) {
+        otpInputs[index - 1].focus();
+      }
+    });
+
+    input.addEventListener("paste", (event) => {
+      event.preventDefault();
+      const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, EMAIL_OTP_LENGTH);
+      pasted.split("").forEach((digit, digitIndex) => {
+        if (otpInputs[digitIndex]) otpInputs[digitIndex].value = digit;
+      });
+      syncEmailOtpValue();
+      otpInputs[Math.min(pasted.length, EMAIL_OTP_LENGTH) - 1]?.focus();
+    });
+  });
+
+  updateEmailAuthCooldown();
+}
+
+async function sendEmailOtp(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitButton = document.getElementById("sendEmailOtpButton");
+  const formData = getEmailOtpFormData(form);
+  if (!formData) return;
+  await startEmailOtpRequest(formData, submitButton);
+}
+
+async function resendEmailOtp(event) {
+  event.preventDefault();
+  const form = document.getElementById("emailOtpForm");
+  const button = document.getElementById("resendEmailOtpButton");
+  const formData = emailAuthState.profileData || (form ? getEmailOtpFormData(form) : null);
+  if (!formData) return;
+  await startEmailOtpRequest(formData, button);
+}
+
+async function startEmailOtpRequest(formData, button) {
   if (emailAuthState.inFlight) {
     notify("Authentication request already in progress. Please wait.", "error");
     return false;
   }
   if (Date.now() < emailAuthState.cooldownUntil) {
-    notify("Please wait before requesting another verification email.", "error");
+    notify("Please wait before requesting another email OTP.", "error");
     return false;
   }
 
   emailAuthState.inFlight = true;
+  setButtonLoading(button, true, "Sending...");
   try {
-    await task();
+    const client = await getSupabaseClient();
+    console.log(`[auth] email OTP request for ${formData.email}`);
+    const { error } = await client.auth.signInWithOtp({
+      email: formData.email,
+      options: {
+        shouldCreateUser: true,
+        data: {
+          name: formData.name,
+          mobile: formData.mobile
+        }
+      }
+    });
+    if (error) {
+      console.error(error);
+      throw new Error(authErrorMessage(error, error.message || "Could not send email OTP."));
+    }
+
+    emailAuthState.email = formData.email;
+    emailAuthState.profileData = formData;
+    const otpPanel = document.getElementById("emailOtpPanel");
+    if (otpPanel) otpPanel.hidden = false;
+    resetEmailOtpInputs();
     startEmailAuthCooldown();
+    notify("A 6-digit OTP has been sent to your email inbox.", "success");
     return true;
+  } catch (error) {
+    console.error(error);
+    showAuthError(error, error.message || "Could not send email OTP.");
+    return false;
   } finally {
     emailAuthState.inFlight = false;
+    setButtonLoading(button, false);
     updateEmailAuthCooldown();
   }
 }
 
-async function login(event) {
-  event.preventDefault();
-  const submitButton = event.target.querySelector("button[type='submit']");
-  const data = Object.fromEntries(new FormData(event.target));
+async function verifyEmailOtp() {
+  const verifyButton = document.getElementById("verifyEmailOtpButton");
+  const token = syncEmailOtpValue();
+  const form = document.getElementById("emailOtpForm");
+  const email = emailAuthState.email || String(form?.elements.email?.value || "").trim();
+  const profileData = emailAuthState.profileData || (form ? getEmailOtpFormData(form) : null);
 
-  if (!validEmail(data.email)) {
-    notify("Enter a valid email address.", "error");
-    event.target.elements.email.focus();
+  if (!validEmail(email)) {
+    notify("Enter your email again before verifying the OTP.", "error");
+    form?.elements.email?.focus();
     return;
   }
 
-  setButtonLoading(submitButton, true, "Logging in...");
+  if (token.length !== EMAIL_OTP_LENGTH) {
+    notify("Enter the complete 6-digit OTP from your email.", "error");
+    document.querySelector("#emailOtpBoxes input")?.focus();
+    return;
+  }
+
+  if (Date.now() > emailAuthState.cooldownUntil) {
+    notify("This OTP window has expired. Please request a fresh email OTP.", "error");
+    return;
+  }
+
+  setButtonLoading(verifyButton, true, "Verifying...");
   try {
     const client = await getSupabaseClient();
-    console.log(`[auth] signInWithPassword attempt for ${data.email}`);
-    const { data: authData, error } = await client.auth.signInWithPassword({
-      email: String(data.email).trim(),
-      password: data.password
+    console.log(`[auth] verifying email OTP for ${email}`);
+    const { data: authData, error } = await client.auth.verifyOtp({
+      email,
+      token,
+      type: "email"
     });
     if (error) {
       console.error(error);
-      throw new Error(authErrorMessage(error, "Invalid email or password."));
+      throw new Error(authErrorMessage(error, error.message || "Could not verify email OTP."));
     }
-    if (!authData.session) {
-      throw new Error("Login succeeded but no session was returned. Please try again.");
+    if (!authData?.session || !authData?.user) {
+      throw new Error("Email OTP verified, but Supabase did not return a session. Please try again.");
+    }
+
+    if (profileData?.password) {
+      const { error: passwordError } = await client.auth.updateUser({
+        password: profileData.password,
+        data: {
+          name: profileData.name,
+          mobile: profileData.mobile
+        }
+      });
+      if (passwordError) {
+        console.error(passwordError);
+      }
     }
 
     await syncSessionFromSupabase(authData.session);
-    await upsertUserProfile(authData.user);
+    await upsertUserProfile(authData.user, {
+      name: profileData?.name,
+      email,
+      mobile: profileData?.mobile
+    });
     wishlistCache = null;
     await getWishlist();
-    notify("Welcome back to Urban Kicks India.", "success");
+    if (emailAuthState.timer) window.clearTimeout(emailAuthState.timer);
+    emailAuthState = { email: "", profileData: null, cooldownUntil: 0, timer: null, inFlight: false };
+    notify("Email verified. Welcome to Urban Kicks India.", "success");
     location.hash = "#/profile";
   } catch (error) {
-    showAuthError(error, error.message || "Invalid email or password.");
+    console.error(error);
+    showAuthError(error, error.message || "Could not verify email OTP.");
   } finally {
-    setButtonLoading(submitButton, false, "Login");
+    setButtonLoading(verifyButton, false);
+    updateEmailAuthCooldown();
   }
-}
-
-async function sendMagicLink(event) {
-  event.preventDefault();
-  const submitButton = event.target.querySelector("button[type='submit']");
-  const data = Object.fromEntries(new FormData(event.target));
-
-  if (!validEmail(data.email)) {
-    notify("Enter a valid email address.", "error");
-    event.target.elements.email.focus();
-    return;
-  }
-
-  await guardEmailRequest(async () => {
-    setButtonLoading(submitButton, true, "Sending...");
-    try {
-      const client = await getSupabaseClient();
-      console.log(`[auth] signInWithOtp email attempt for ${data.email}`);
-      const { error } = await client.auth.signInWithOtp({
-        email: String(data.email).trim(),
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: window.location.origin
-        }
-      });
-      if (error) {
-        console.error(error);
-        throw new Error(authErrorMessage(error, "Could not send verification link."));
-      }
-      notify("Verification link sent. Check your email inbox.", "success");
-    } catch (error) {
-      showAuthError(error, error.message || "Could not send verification link.");
-      throw error;
-    } finally {
-      setButtonLoading(submitButton, false, "Send verification link");
-    }
-  }).catch(() => null);
-}
-
-async function signup(event) {
-  event.preventDefault();
-  const submitButton = event.target.querySelector("button[type='submit']");
-  const data = Object.fromEntries(new FormData(event.target));
-  const mobile = normalizePhoneNumber(data.mobile);
-  const email = String(data.email || "").trim();
-  const name = String(data.name || "").trim();
-
-  if (!name) {
-    notify("Enter your full name to create an Urban Kicks account.", "error");
-    event.target.elements.name.focus();
-    return;
-  }
-
-  if (!validEmail(email)) {
-    notify("Enter a valid email address.", "error");
-    event.target.elements.email.focus();
-    return;
-  }
-
-  if (!data.password || String(data.password).length < 6) {
-    notify("Password must be at least 6 characters.", "error");
-    event.target.elements.password.focus();
-    return;
-  }
-
-  if (!mobile) {
-    notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
-    event.target.elements.mobile.focus();
-    return;
-  }
-
-  await guardEmailRequest(async () => {
-    setButtonLoading(submitButton, true, "Creating...");
-    try {
-      const client = await getSupabaseClient();
-      console.log(`[auth] signUp attempt for ${email}`);
-      const { data: authData, error } = await client.auth.signUp({
-        email,
-        password: data.password,
-        options: {
-          data: {
-            name,
-            mobile
-          },
-          emailRedirectTo: window.location.origin
-        }
-      });
-      if (error) {
-        console.error(error);
-        throw new Error(authErrorMessage(error, "Signup failed. Check your details and try again."));
-      }
-
-      if (authData.session) {
-        await syncSessionFromSupabase(authData.session);
-        await upsertUserProfile(authData.user, { name, email, mobile });
-        wishlistCache = null;
-        await getWishlist();
-        notify("Your Urban Kicks account is ready.", "success");
-        location.hash = "#/profile";
-        return;
-      }
-
-      notify("Signup successful. Please verify your email, then log in.", "success");
-      event.target.reset();
-    } catch (error) {
-      showAuthError(error, error.message || "Signup failed. Check your details and try again.");
-      throw error;
-    } finally {
-      setButtonLoading(submitButton, false, "Create account");
-    }
-  }).catch(() => null);
 }
 
 async function logout() {

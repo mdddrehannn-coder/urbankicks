@@ -2751,19 +2751,82 @@ body.light-mode .footer-grid a:hover {
   animation: authSlideIn 220ms ease both;
 }
 
-.email-magic-form {
+.email-otp-panel {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  margin-top: 6px;
+  padding: 16px;
   border: 1px solid rgba(12, 13, 16, 0.1);
   border-radius: 18px;
   background:
     radial-gradient(circle at 12% 0%, rgba(227, 6, 19, 0.08), transparent 12rem),
     linear-gradient(180deg, #ffffff, #f4f5f7);
+  animation: authSlideIn 220ms ease both;
+}
+
+.email-otp-panel[hidden] {
+  display: none;
+}
+
+.email-otp-panel p {
+  margin: 0;
+  color: rgba(73, 82, 96, 0.9);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.otp-boxes {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.otp-boxes input {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(12, 13, 16, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0c0d10;
+  font-size: clamp(1.05rem, 4vw, 1.35rem);
+  font-weight: 950;
+  text-align: center;
+  outline: 0;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.otp-boxes input:focus {
+  border-color: rgba(227, 6, 19, 0.72);
+  box-shadow: 0 0 0 4px rgba(227, 6, 19, 0.12);
+  transform: translateY(-1px);
+}
+
+.auth-feature-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.auth-feature-list span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.auth-feature-list span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e30613;
+  box-shadow: 0 0 18px rgba(227, 6, 19, 0.75);
 }
 
 .email-auth-form .button,
-.email-magic-form .button,
+.email-otp-panel .button,
 .auth-signup-panel .button {
   width: 100%;
   justify-content: center;
@@ -2798,11 +2861,15 @@ body.light-mode .auth-divider {
   color: #687284;
 }
 
-body.light-mode .email-magic-form {
+body.light-mode .email-otp-panel {
   background:
     radial-gradient(circle at 12% 0%, rgba(227, 6, 19, 0.08), transparent 12rem),
     linear-gradient(180deg, #ffffff, #f4f5f7);
   border-color: rgba(12, 13, 16, 0.12);
+}
+
+body.light-mode .auth-feature-list span {
+  color: rgba(25, 30, 39, 0.82);
 }
 
 @keyframes authSpin {
