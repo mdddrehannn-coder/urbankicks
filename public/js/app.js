@@ -8,12 +8,19 @@ const CART_KEY = "urbanKicksCart";
 const SESSION_KEY = "urbanKicksSession";
 const WISH_KEY = "urbanKicksWishlist";
 const THEME_KEY = "urbanKicksTheme";
+const OTP_LENGTH = 6;
+const OTP_RESEND_SECONDS = 60;
 
 let catalogCache = null;
 let wishlistCache = null;
 let authRefreshTimer = null;
 let supabaseClient = null;
 let supabaseClientPromise = null;
+let phoneOtpState = {
+  phone: "",
+  cooldownUntil: 0,
+  timer: null
+};
 
 const categorySeed = [
   { slug: "speed-runners", title: "Speed Runners", copy: "Responsive shoes for fast city movement.", accent: "pink" },
@@ -51,6 +58,23 @@ function errorToMessage(error, fallback = "Something went wrong. Please try agai
   }
 }
 
+function authErrorMessage(error, fallback = "Authentication failed. Please try again.") {
+  const message = errorToMessage(error, fallback);
+  const lower = message.toLowerCase();
+
+  if (lower.includes("invalid") && lower.includes("otp")) return "Invalid OTP. Please check the 6-digit code and try again.";
+  if (lower.includes("expired")) return "This OTP has expired. Please request a new code.";
+  if (lower.includes("too many") || lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
+    return "Too many OTP requests. Please wait a minute before trying again.";
+  }
+  if (lower.includes("fetch") || lower.includes("network") || lower.includes("failed to fetch")) {
+    return "Network issue while contacting Supabase. Please check your connection and try again.";
+  }
+  if (lower.includes("phone") && lower.includes("invalid")) return "Enter a valid phone number with country code, like +91 90000 00000.";
+
+  return message;
+}
+
 function notify(message, type = "info") {
   const toast = document.createElement("div");
   const normalizedMessage = errorToMessage(message, "Something went wrong. Please try again.");
@@ -62,6 +86,16 @@ function notify(message, type = "info") {
     toast.classList.remove("show");
     window.setTimeout(() => toast.remove(), 220);
   }, 4200);
+}
+
+function normalizePhoneNumber(value) {
+  const raw = String(value || "").trim();
+  const compact = raw.replace(/[^\d+]/g, "");
+  if (/^\+\d{10,15}$/.test(compact)) return compact;
+  const digits = compact.replace(/\D/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length > 10 && digits.length <= 15) return `+${digits}`;
+  return "";
 }
 
 function sneakerPlaceholder(accent, label) {
@@ -308,7 +342,7 @@ async function upsertUserProfile(user, extra = {}) {
 function showAuthError(error, fallback = "Authentication failed") {
   console.error(error);
   console.error("[auth]", error);
-  notify(errorToMessage(error, fallback), "error");
+  notify(authErrorMessage(error, fallback), "error");
 }
 
 async function refreshSession() {
@@ -847,7 +881,7 @@ function authPage() {
   if (user) {
     app.innerHTML = `
       <section class="section">
-        ${sectionHead("Account", "You are logged in", `Signed in as ${user.email || "Urban Kicks member"}.`)}
+        ${sectionHead("Account", "You are logged in", `Signed in as ${user.email || user.phone || "Urban Kicks member"}.`)}
         <button class="button danger" onclick="logout()">Logout</button>
       </section>
     `;
@@ -871,6 +905,27 @@ function authPage() {
           <label>Password<input name="password" type="password" required placeholder="Your password"></label>
           <button class="button primary" type="submit">Login</button>
         </form>
+        <div class="auth-divider"><span>or</span></div>
+        <button class="button phone-auth-trigger" type="button" id="phoneAuthToggle">Continue with Phone Number</button>
+        <form class="form phone-auth-form" id="phoneOtpForm" hidden>
+          <label>Phone number<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
+          <button class="button dark otp-send-button" type="submit" id="sendOtpButton">
+            <span class="button-label">Send OTP</span>
+            <span class="button-spinner" aria-hidden="true"></span>
+          </button>
+          <div class="otp-verify-panel" id="otpVerifyPanel" hidden>
+            <p class="auth-note">Enter the 6-digit OTP sent to your phone.</p>
+            <div class="otp-boxes" id="otpBoxes" aria-label="One time password">
+              ${Array.from({ length: OTP_LENGTH }, (_, index) => `<input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="OTP digit ${index + 1}" data-otp-index="${index}">`).join("")}
+            </div>
+            <input type="hidden" name="otp" id="otpValue">
+            <button class="button primary otp-verify-button" type="button" id="verifyOtpButton">
+              <span class="button-label">Verify OTP</span>
+              <span class="button-spinner" aria-hidden="true"></span>
+            </button>
+            <button class="button light otp-resend-button" type="button" id="resendOtpButton" disabled>Resend OTP in 60s</button>
+          </div>
+        </form>
       </div>
       <div class="panel">
         <p class="eyebrow">Signup</p>
@@ -879,7 +934,7 @@ function authPage() {
         <form class="form" id="signupForm">
           <label>Name<input name="name" required placeholder="Your name"></label>
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
-          <label>Mobile number<input name="mobile" required placeholder="+91 90000 00000"></label>
+          <label>Mobile number <span class="optional-label">optional</span><input name="mobile" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
           <label>Password<input name="password" type="password" required minlength="6" placeholder="At least 6 characters"></label>
           <button class="button dark" type="submit">Signup</button>
         </form>
@@ -888,6 +943,7 @@ function authPage() {
   `;
   document.getElementById("loginForm").addEventListener("submit", login);
   document.getElementById("signupForm").addEventListener("submit", signup);
+  setupPhoneOtpAuth();
 }
 
 async function login(event) {
@@ -922,6 +978,198 @@ async function login(event) {
   }
 }
 
+function setButtonLoading(button, loading, loadingLabel) {
+  if (!button) return;
+  const label = button.querySelector(".button-label");
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = label?.textContent || button.textContent;
+  }
+  button.disabled = loading;
+  button.classList.toggle("is-loading", loading);
+  if (label) label.textContent = loading ? loadingLabel : button.dataset.originalLabel;
+  else button.textContent = loading ? loadingLabel : button.dataset.originalLabel;
+}
+
+function setupPhoneOtpAuth() {
+  const toggle = document.getElementById("phoneAuthToggle");
+  const form = document.getElementById("phoneOtpForm");
+  const verifyPanel = document.getElementById("otpVerifyPanel");
+  const sendButton = document.getElementById("sendOtpButton");
+  const verifyButton = document.getElementById("verifyOtpButton");
+  const resendButton = document.getElementById("resendOtpButton");
+  const otpInputs = Array.from(document.querySelectorAll("#otpBoxes input"));
+  const otpValue = document.getElementById("otpValue");
+
+  if (!toggle || !form || !verifyPanel || !sendButton || !verifyButton || !resendButton) return;
+
+  toggle.addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    toggle.setAttribute("aria-expanded", String(!form.hidden));
+    if (!form.hidden) form.elements.phone.focus();
+  });
+
+  form.addEventListener("submit", sendPhoneOtp);
+  resendButton.addEventListener("click", sendPhoneOtp);
+  verifyButton.addEventListener("click", verifyPhoneOtp);
+
+  otpInputs.forEach((input, index) => {
+    input.addEventListener("input", () => {
+      input.value = input.value.replace(/\D/g, "").slice(0, 1);
+      otpValue.value = otpInputs.map((field) => field.value).join("");
+      if (input.value && otpInputs[index + 1]) otpInputs[index + 1].focus();
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Backspace" && !input.value && otpInputs[index - 1]) {
+        otpInputs[index - 1].focus();
+      }
+    });
+    input.addEventListener("paste", (event) => {
+      event.preventDefault();
+      const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, OTP_LENGTH);
+      pasted.split("").forEach((digit, digitIndex) => {
+        if (otpInputs[digitIndex]) otpInputs[digitIndex].value = digit;
+      });
+      otpValue.value = otpInputs.map((field) => field.value).join("");
+      const next = otpInputs[Math.min(pasted.length, OTP_LENGTH - 1)];
+      if (next) next.focus();
+    });
+  });
+
+  updateOtpCooldown();
+}
+
+function updateOtpCooldown() {
+  const resendButton = document.getElementById("resendOtpButton");
+  const sendButton = document.getElementById("sendOtpButton");
+  if (!resendButton || !sendButton) return;
+
+  const secondsLeft = Math.max(0, Math.ceil((phoneOtpState.cooldownUntil - Date.now()) / 1000));
+  const coolingDown = secondsLeft > 0;
+  resendButton.disabled = coolingDown;
+  resendButton.textContent = coolingDown ? `Resend OTP in ${secondsLeft}s` : "Resend OTP";
+  sendButton.disabled = coolingDown;
+  if (!sendButton.classList.contains("is-loading")) {
+    const label = sendButton.querySelector(".button-label");
+    if (label) label.textContent = coolingDown ? `Wait ${secondsLeft}s` : "Send OTP";
+  }
+
+  if (phoneOtpState.timer) window.clearTimeout(phoneOtpState.timer);
+  if (coolingDown) {
+    phoneOtpState.timer = window.setTimeout(updateOtpCooldown, 1000);
+  }
+}
+
+function startOtpCooldown() {
+  phoneOtpState.cooldownUntil = Date.now() + OTP_RESEND_SECONDS * 1000;
+  updateOtpCooldown();
+}
+
+function resetOtpInputs() {
+  const otpInputs = Array.from(document.querySelectorAll("#otpBoxes input"));
+  const otpValue = document.getElementById("otpValue");
+  otpInputs.forEach((input) => {
+    input.value = "";
+  });
+  if (otpValue) otpValue.value = "";
+  otpInputs[0]?.focus();
+}
+
+async function sendPhoneOtp(event) {
+  event.preventDefault();
+  const form = document.getElementById("phoneOtpForm");
+  const verifyPanel = document.getElementById("otpVerifyPanel");
+  const sendButton = document.getElementById("sendOtpButton");
+  const rawPhone = form?.elements.phone.value;
+  const phone = normalizePhoneNumber(rawPhone);
+
+  if (!phone) {
+    notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
+    form?.elements.phone.focus();
+    return;
+  }
+
+  if (Date.now() < phoneOtpState.cooldownUntil) {
+    notify("Please wait before requesting another OTP.", "error");
+    return;
+  }
+
+  setButtonLoading(sendButton, true, "Sending...");
+  try {
+    const client = await getSupabaseClient();
+    console.log(`[auth] signInWithOtp attempt for ${phone}`);
+    const { error } = await client.auth.signInWithOtp({
+      phone,
+      options: {
+        shouldCreateUser: true,
+        data: { mobile: phone }
+      }
+    });
+    if (error) {
+      console.error(error);
+      throw new Error(authErrorMessage(error, "Could not send OTP. Please try again."));
+    }
+
+    phoneOtpState.phone = phone;
+    if (form) form.elements.phone.value = phone;
+    verifyPanel.hidden = false;
+    resetOtpInputs();
+    startOtpCooldown();
+    notify("OTP sent. Check your phone messages.", "success");
+  } catch (error) {
+    showAuthError(error, error.message || "Could not send OTP. Please try again.");
+  } finally {
+    setButtonLoading(sendButton, false, "Send OTP");
+    updateOtpCooldown();
+  }
+}
+
+async function verifyPhoneOtp() {
+  const verifyButton = document.getElementById("verifyOtpButton");
+  const otpInputs = Array.from(document.querySelectorAll("#otpBoxes input"));
+  const token = otpInputs.map((field) => field.value).join("");
+  const formPhone = normalizePhoneNumber(document.getElementById("phoneOtpForm")?.elements.phone.value);
+  const phone = phoneOtpState.phone || formPhone;
+
+  if (!phone) {
+    notify("Please send an OTP to your phone number first.", "error");
+    return;
+  }
+  if (!/^\d{6}$/.test(token)) {
+    notify("Enter the complete 6-digit OTP.", "error");
+    otpInputs.find((input) => !input.value)?.focus();
+    return;
+  }
+
+  setButtonLoading(verifyButton, true, "Verifying...");
+  try {
+    const client = await getSupabaseClient();
+    console.log(`[auth] verifyOtp attempt for ${phone}`);
+    const { data: authData, error } = await client.auth.verifyOtp({
+      phone,
+      token,
+      type: "sms"
+    });
+    if (error) {
+      console.error(error);
+      throw new Error(authErrorMessage(error, "Could not verify OTP. Please try again."));
+    }
+    if (!authData.session) {
+      throw new Error("OTP verified, but Supabase did not return a session. Please try logging in again.");
+    }
+
+    await syncSessionFromSupabase(authData.session);
+    await upsertUserProfile(authData.user, { mobile: phone, name: "Urban Kicks Member" });
+    wishlistCache = null;
+    await getWishlist();
+    notify("Phone login successful. Welcome to Urban Kicks India.", "success");
+    location.hash = "#/profile";
+  } catch (error) {
+    showAuthError(error, error.message || "Could not verify OTP. Please try again.");
+  } finally {
+    setButtonLoading(verifyButton, false, "Verify OTP");
+  }
+}
+
 async function signup(event) {
   event.preventDefault();
   const submitButton = event.target.querySelector("button[type='submit']");
@@ -929,6 +1177,7 @@ async function signup(event) {
   submitButton.disabled = true;
   submitButton.textContent = "Creating...";
   const data = Object.fromEntries(new FormData(event.target));
+  const mobile = normalizePhoneNumber(data.mobile);
   try {
     const client = await getSupabaseClient();
     console.log(`[auth] signUp attempt for ${data.email}`);
@@ -938,7 +1187,7 @@ async function signup(event) {
       options: {
         data: {
           name: data.name,
-          mobile: data.mobile
+          mobile
         },
         emailRedirectTo: window.location.origin
       }
@@ -950,7 +1199,7 @@ async function signup(event) {
 
     if (authData.session) {
       await syncSessionFromSupabase(authData.session);
-      await upsertUserProfile(authData.user, data);
+      await upsertUserProfile(authData.user, { ...data, mobile });
       wishlistCache = null;
       console.log(`[auth] signup success with active session for ${data.email}`);
       notify("Your Urban Kicks account is ready.", "success");
@@ -999,7 +1248,7 @@ async function profilePage() {
     <section class="section">
       ${sectionHead("Profile", "Your account", "Saved orders, checkout details, and transaction records.")}
       <div class="schema-grid">
-        <article class="mini-card"><h3>${safe(session.user?.user_metadata?.name || "Urban Kicks Member")}</h3><p class="meta">${safe(session.user?.email || "")}</p><button class="button danger" onclick="logout()">Logout</button></article>
+        <article class="mini-card"><h3>${safe(session.user?.user_metadata?.name || "Urban Kicks Member")}</h3><p class="meta">${safe(session.user?.email || session.user?.phone || "Phone login active")}</p><button class="button danger" onclick="logout()">Logout</button></article>
         <article class="mini-card"><h3>Order history</h3><p class="meta">${orders.length} saved orders</p></article>
         <article class="mini-card"><h3>Transactions</h3><p class="meta">${transactions.length} COD transaction records</p></article>
       </div>
