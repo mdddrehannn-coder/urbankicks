@@ -2744,38 +2744,17 @@ body.light-mode .footer-grid a:hover {
   background: linear-gradient(90deg, transparent, rgba(12, 13, 16, 0.18), transparent);
 }
 
-.phone-auth-trigger {
-  width: 100%;
-  justify-content: center;
-  border: 1px solid rgba(12, 13, 16, 0.16);
-  background: linear-gradient(135deg, #111318, #050506);
-  color: #fff;
-  box-shadow: 0 16px 36px rgba(12, 13, 16, 0.16);
-}
-
-.phone-auth-form {
-  margin-top: 16px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(12, 13, 16, 0.1);
-  animation: authSlideIn 220ms ease both;
-}
-
-.primary-phone-form {
+.email-auth-form {
   margin-top: 4px;
   padding-top: 0;
   border-top: 0;
+  animation: authSlideIn 220ms ease both;
 }
 
-.phone-auth-form[hidden],
-.otp-verify-panel[hidden] {
-  display: none;
-}
-
-.otp-verify-panel {
+.email-magic-form {
   display: grid;
-  gap: 14px;
-  margin-top: 6px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid rgba(12, 13, 16, 0.1);
   border-radius: 18px;
   background:
@@ -2783,37 +2762,9 @@ body.light-mode .footer-grid a:hover {
     linear-gradient(180deg, #ffffff, #f4f5f7);
 }
 
-.otp-boxes {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.otp-boxes input {
-  width: 100%;
-  aspect-ratio: 1;
-  min-height: 44px;
-  border: 1px solid rgba(12, 13, 16, 0.18);
-  border-radius: 14px;
-  background: #fff;
-  color: #090a0d;
-  text-align: center;
-  font-family: Oswald, Inter, sans-serif;
-  font-size: clamp(1.1rem, 5vw, 1.6rem);
-  font-weight: 950;
-  outline: none;
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-}
-
-.otp-boxes input:focus {
-  border-color: rgba(227, 6, 19, 0.72);
-  box-shadow: 0 0 0 4px rgba(227, 6, 19, 0.12), 0 12px 30px rgba(12, 13, 16, 0.12);
-  transform: translateY(-2px);
-}
-
-.otp-send-button,
-.otp-verify-button,
-.otp-resend-button {
+.email-auth-form .button,
+.email-magic-form .button,
+.auth-signup-panel .button {
   width: 100%;
   justify-content: center;
 }
@@ -2825,7 +2776,7 @@ body.light-mode .footer-grid a:hover {
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 999px;
-  animation: otpSpin 780ms linear infinite;
+  animation: authSpin 780ms linear infinite;
 }
 
 .button.is-loading {
@@ -2847,20 +2798,14 @@ body.light-mode .auth-divider {
   color: #687284;
 }
 
-body.light-mode .phone-auth-trigger,
-body.light-mode .phone-auth-form .button.dark {
-  background: linear-gradient(135deg, #111318, #050506);
-  color: #fff;
-}
-
-body.light-mode .otp-verify-panel {
+body.light-mode .email-magic-form {
   background:
     radial-gradient(circle at 12% 0%, rgba(227, 6, 19, 0.08), transparent 12rem),
     linear-gradient(180deg, #ffffff, #f4f5f7);
   border-color: rgba(12, 13, 16, 0.12);
 }
 
-@keyframes otpSpin {
+@keyframes authSpin {
   to {
     transform: rotate(360deg);
   }
@@ -2881,14 +2826,5 @@ body.light-mode .otp-verify-panel {
   body.light-mode .nav-links {
     background: rgba(255, 255, 255, 0.98);
     border-color: rgba(12, 13, 16, 0.12);
-  }
-
-  .otp-boxes {
-    gap: 6px;
-  }
-
-  .otp-verify-panel {
-    padding: 14px;
-    border-radius: 16px;
   }
 }
