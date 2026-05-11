@@ -10,12 +10,30 @@ router.get("/status", (_req, res) => {
 });
 
 function profilePayload(user, body = {}) {
+  const fullName = body.full_name || body.name || user.user_metadata?.full_name || user.user_metadata?.name || "Urban Kicks Member";
+  const phoneNumber = body.phone_number || body.mobile || user.phone || user.user_metadata?.phone_number || user.user_metadata?.mobile || "";
+  const profileImage = body.profile_image || user.user_metadata?.profile_image || "";
+
   return {
     id: user.id,
-    name: body.name || user.user_metadata?.name || "Urban Kicks Member",
+    name: fullName,
+    full_name: fullName,
     email: user.email || body.email || "",
-    mobile: body.mobile || user.phone || user.user_metadata?.mobile || "",
+    mobile: phoneNumber,
+    phone_number: phoneNumber,
+    profile_image: profileImage,
     role: "customer"
+  };
+}
+
+function legacyProfilePayload(user, body = {}) {
+  const payload = profilePayload(user, body);
+  return {
+    id: payload.id,
+    name: payload.name,
+    email: payload.email,
+    mobile: payload.mobile,
+    role: payload.role
   };
 }
 
@@ -31,7 +49,12 @@ async function signupHandler(req, res) {
       body: {
         email: req.body.email,
         password: req.body.password,
-        data: { name: req.body.name, mobile: req.body.mobile }
+        data: {
+          name: req.body.name || req.body.full_name,
+          full_name: req.body.full_name || req.body.name,
+          mobile: req.body.mobile || req.body.phone_number,
+          phone_number: req.body.phone_number || req.body.mobile
+        }
       }
     });
 
@@ -120,12 +143,24 @@ router.post("/profile", async (req, res) => {
     const user = await getAuthUser(token);
     if (!user) return res.status(401).json({ message: "Login required" });
 
-    const rows = await request("/rest/v1/users", {
-      method: "POST",
-      token,
-      headers: { ...preferReturn(), Prefer: "resolution=merge-duplicates,return=representation" },
-      body: profilePayload(user, req.body)
-    });
+    let rows;
+    try {
+      rows = await request("/rest/v1/users", {
+        method: "POST",
+        token,
+        headers: { ...preferReturn(), Prefer: "resolution=merge-duplicates,return=representation" },
+        body: profilePayload(user, req.body)
+      });
+    } catch (profileError) {
+      console.error(profileError);
+      console.warn("[auth] profile sync falling back to legacy columns:", profileError.message);
+      rows = await request("/rest/v1/users", {
+        method: "POST",
+        token,
+        headers: { ...preferReturn(), Prefer: "resolution=merge-duplicates,return=representation" },
+        body: legacyProfilePayload(user, req.body)
+      });
+    }
 
     console.log(`[auth] profile synced for ${user.email || user.id}`);
     res.status(201).json(rows[0] || profilePayload(user, req.body));

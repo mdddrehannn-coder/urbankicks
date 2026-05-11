@@ -19,6 +19,8 @@ let supabaseClientPromise = null;
 let emailAuthState = {
   email: "",
   profileData: null,
+  flow: "",
+  shouldCreateUser: false,
   cooldownUntil: 0,
   timer: null,
   inFlight: false
@@ -67,7 +69,11 @@ function authErrorMessage(error, fallback = "Authentication failed. Please try a
   if ((lower.includes("invalid") && lower.includes("otp")) || (lower.includes("invalid") && lower.includes("token"))) {
     return "Invalid OTP. Please check the 6-digit email code and try again.";
   }
-  if (lower.includes("invalid login credentials")) return "Invalid email OTP. Please request a fresh code and try again.";
+  if (lower.includes("invalid login credentials")) {
+    return fallback.toLowerCase().includes("password")
+      ? "Invalid email or password. Please check your details and try again."
+      : "Invalid email OTP. Please request a fresh code and try again.";
+  }
   if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
     return "Please verify your email with the 6-digit OTP sent to your inbox.";
   }
@@ -336,9 +342,12 @@ async function upsertUserProfile(user, extra = {}) {
       method: "POST",
       body: JSON.stringify({
         id: user.id,
-        name: extra.name || user.user_metadata?.name || "Urban Kicks Member",
+        name: extra.name || extra.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "Urban Kicks Member",
+        full_name: extra.full_name || extra.name || user.user_metadata?.full_name || user.user_metadata?.name || "Urban Kicks Member",
         email: user.email || extra.email || "",
-        mobile: extra.mobile || user.phone || user.user_metadata?.mobile || ""
+        mobile: extra.mobile || extra.phone_number || user.phone || user.user_metadata?.phone_number || user.user_metadata?.mobile || "",
+        phone_number: extra.phone_number || extra.mobile || user.phone || user.user_metadata?.phone_number || user.user_metadata?.mobile || "",
+        profile_image: extra.profile_image || user.user_metadata?.profile_image || ""
       })
     });
     console.log("[auth] user profile synced");
@@ -885,73 +894,142 @@ async function wishlistPage() {
   `;
 }
 
-function authPage() {
+function otpInputMarkup(prefix = "emailOtp") {
+  return Array.from({ length: EMAIL_OTP_LENGTH }, (_, index) => (
+    `<input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Email OTP digit ${index + 1}" data-otp-index="${index}" data-otp-prefix="${prefix}">`
+  )).join("");
+}
+
+function authPage(mode = "login") {
   const user = getUser();
   if (user) {
-    app.innerHTML = `
-      <section class="section">
-        ${sectionHead("Account", "You are logged in", `Signed in as ${user.email || user.phone || "Urban Kicks member"}.`)}
-        <button class="button danger" onclick="logout()">Logout</button>
-      </section>
-    `;
+    location.hash = "#/profile";
     return;
   }
+  const isSignup = mode === "signup";
+  const isOtp = mode === "otp";
   app.innerHTML = `
     <section class="auth-layout">
       <div class="auth-brand-panel">
         <span class="logo-badge logo-badge-auth" aria-hidden="true">
           <img src="/assets/urban-kicks-logo.png" alt="">
         </span>
-        <h2>Urban Kicks access</h2>
-        <p>Secure your wishlist, cart, COD checkout, and drop history with a 6-digit code sent to your email.</p>
+        <h2>Urban Kicks account</h2>
+        <p>Premium access for wishlist sync, COD checkout, order history, and members-only sneaker drops.</p>
+        <div class="auth-proof-grid">
+          <span>Secure sessions</span>
+          <span>Email OTP ready</span>
+          <span>No redirect links</span>
+        </div>
       </div>
       <div class="panel auth-primary-panel">
         <div class="auth-panel-logo">
           <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks">
         </div>
-        <p class="eyebrow">Primary Auth</p>
-        <h1>Email OTP Access</h1>
-        <p class="auth-note">Enter your details, receive a 6-digit OTP in Gmail/email, then verify it here.</p>
-        <form class="form email-auth-form" id="emailOtpForm">
-          <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
-          <label>Email Address<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
-          <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
-          <label>Phone Number<input name="mobile" required type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
-          <button class="button dark" type="submit" id="sendEmailOtpButton">
-            <span class="button-label">Continue</span>
-            <span class="button-spinner" aria-hidden="true"></span>
-          </button>
-          <div class="email-otp-panel" id="emailOtpPanel" hidden>
-            <p class="auth-note">Enter the 6-digit OTP sent to your email. The code expires in 60 seconds.</p>
-            <div class="otp-boxes" id="emailOtpBoxes" aria-label="Email one time password">
-              ${Array.from({ length: EMAIL_OTP_LENGTH }, (_, index) => `<input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Email OTP digit ${index + 1}" data-otp-index="${index}">`).join("")}
-            </div>
-            <input type="hidden" name="otp" id="emailOtpValue">
-            <button class="button primary email-otp-verify-button" type="button" id="verifyEmailOtpButton">
-              <span class="button-label">Verify OTP</span>
-              <span class="button-spinner" aria-hidden="true"></span>
-            </button>
-            <button class="button light email-otp-resend-button" type="button" id="resendEmailOtpButton" disabled>Resend OTP in 60s</button>
-          </div>
-        </form>
+        <div class="auth-tabs" aria-label="Authentication options">
+          <a class="${!isSignup && !isOtp ? "active" : ""}" href="#/auth">Login</a>
+          <a class="${isSignup ? "active" : ""}" href="#/auth/signup">Sign Up</a>
+          <a class="${isOtp ? "active" : ""}" href="#/auth/otp">Email OTP</a>
+        </div>
+        ${isSignup ? signupFormMarkup() : isOtp ? otpLoginFormMarkup() : loginFormMarkup()}
       </div>
       <div class="panel auth-signup-panel">
         <div class="auth-panel-logo compact">
           <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks">
         </div>
-        <p class="eyebrow">Email Code Only</p>
-        <h1>Manual email code</h1>
-        <p class="auth-note">Urban Kicks now uses 6-digit email OTP verification only. Your phone number is stored securely for future SMS features while today’s login stays email-based.</p>
+        <p class="eyebrow">Secure sneaker account</p>
+        <h1>${isSignup ? "Create your vault" : isOtp ? "Verify by code" : "Welcome back"}</h1>
+        <p class="auth-note">${isSignup ? "Create an account with email verification and save your profile for future drops." : isOtp ? "Use a real 6-digit email OTP. No localhost redirects, no link-based login." : "Login with password, or switch to Email OTP if you want a code-only sign in."}</p>
         <div class="auth-feature-list">
-          <span>6-digit Gmail/email OTP</span>
+          <span>Password login</span>
+          <span>Real 6-digit email OTP</span>
           <span>60-second resend timer</span>
-          <span>Persistent Supabase session</span>
-          <span>Phone saved for future SMS</span>
+          <span>Persistent account session</span>
+          <span>Phone saved for future SMS features</span>
         </div>
       </div>
     </section>
   `;
-  setupEmailOtpAuth();
+  setupAuthForms(mode);
+}
+
+function loginFormMarkup() {
+  return `
+    <p class="eyebrow">Member Login</p>
+    <h1>Login</h1>
+    <p class="auth-note">Use email and password for fast access, or request a 6-digit email OTP.</p>
+    <form class="form email-auth-form" id="loginForm">
+      <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+      <label>Password<input name="password" type="password" required autocomplete="current-password" placeholder="Your password"></label>
+      <button class="button dark" type="submit">
+        <span class="button-label">Login</span>
+        <span class="button-spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+    <div class="auth-action-row">
+      <button class="text-button" type="button" id="loginOtpShortcut">Login with OTP</button>
+      <button class="text-button" type="button" id="forgotPasswordButton">Forgot Password?</button>
+    </div>
+    <p class="auth-switch">Don't have an account? <a href="#/auth/signup">Sign Up</a></p>
+  `;
+}
+
+function signupFormMarkup() {
+  return `
+    <p class="eyebrow">Create Account</p>
+    <h1>Sign Up</h1>
+    <p class="auth-note">Create your Urban Kicks profile. We will send a 6-digit email OTP before activating the session.</p>
+    <form class="form email-auth-form" id="signupForm">
+      <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
+      <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+      <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
+      <label>Phone Number <span class="optional-label">Optional</span><input name="mobile" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
+      <button class="button primary" type="submit" id="sendEmailOtpButton">
+        <span class="button-label">Create Account</span>
+        <span class="button-spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="#/auth">Login</a></p>
+    ${otpPanelMarkup()}
+  `;
+}
+
+function otpLoginFormMarkup() {
+  return `
+    <p class="eyebrow">Email OTP</p>
+    <h1>Login with OTP</h1>
+    <p class="auth-note">Enter your account email and receive a 6-digit code. You will stay logged in after verification.</p>
+    <form class="form email-auth-form" id="otpLoginForm">
+      <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+      <button class="button dark" type="submit" id="sendEmailOtpButton">
+        <span class="button-label">Send OTP</span>
+        <span class="button-spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+    <p class="auth-switch">Remember your password? <a href="#/auth">Login</a></p>
+    ${otpPanelMarkup()}
+  `;
+}
+
+function otpPanelMarkup() {
+  return `
+    <div class="email-otp-panel" id="emailOtpPanel" hidden>
+      <div class="otp-panel-head">
+        <span class="otp-status-dot"></span>
+        <div>
+          <strong>Email verification</strong>
+          <p class="auth-note">Enter the 6-digit OTP sent to your email. The app will stop accepting this code after 60 seconds.</p>
+        </div>
+      </div>
+      <div class="otp-boxes" id="emailOtpBoxes" aria-label="Email one time password">${otpInputMarkup()}</div>
+      <input type="hidden" name="otp" id="emailOtpValue">
+      <button class="button primary email-otp-verify-button" type="button" id="verifyEmailOtpButton">
+        <span class="button-label">Verify OTP</span>
+        <span class="button-spinner" aria-hidden="true"></span>
+      </button>
+      <button class="button light email-otp-resend-button" type="button" id="resendEmailOtpButton" disabled>Resend OTP in 60s</button>
+    </div>
+  `;
 }
 
 function setButtonLoading(button, loading, loadingLabel) {
@@ -1017,7 +1095,7 @@ function syncEmailOtpValue() {
   return token;
 }
 
-function getEmailOtpFormData(form) {
+function getSignupFormData(form) {
   const data = Object.fromEntries(new FormData(form));
   const mobile = normalizePhoneNumber(data.mobile);
   const email = String(data.email || "").trim();
@@ -1025,7 +1103,7 @@ function getEmailOtpFormData(form) {
   const password = String(data.password || "");
 
   if (!name) {
-    notify("Enter your full name to continue.", "error");
+    notify("Enter your full name to create your Urban Kicks account.", "error");
     form.elements.name.focus();
     return null;
   }
@@ -1042,7 +1120,7 @@ function getEmailOtpFormData(form) {
     return null;
   }
 
-  if (!mobile) {
+  if (data.mobile && !mobile) {
     notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
     form.elements.mobile.focus();
     return null;
@@ -1051,15 +1129,69 @@ function getEmailOtpFormData(form) {
   return { name, email, password, mobile };
 }
 
-function setupEmailOtpAuth() {
-  const form = document.getElementById("emailOtpForm");
+function getLoginFormData(form) {
+  const data = Object.fromEntries(new FormData(form));
+  const email = String(data.email || "").trim();
+  const password = String(data.password || "");
+
+  if (!validEmail(email)) {
+    notify("Enter a valid email address.", "error");
+    form.elements.email.focus();
+    return null;
+  }
+  if (!password) {
+    notify("Enter your password.", "error");
+    form.elements.password.focus();
+    return null;
+  }
+  return { email, password };
+}
+
+function getOtpLoginFormData(form) {
+  const data = Object.fromEntries(new FormData(form));
+  const email = String(data.email || "").trim();
+  if (!validEmail(email)) {
+    notify("Enter a valid email address.", "error");
+    form.elements.email.focus();
+    return null;
+  }
+  return { email };
+}
+
+function setupAuthForms(mode) {
+  const loginForm = document.getElementById("loginForm");
+  const signupForm = document.getElementById("signupForm");
+  const otpLoginForm = document.getElementById("otpLoginForm");
+  const loginOtpShortcut = document.getElementById("loginOtpShortcut");
+  const forgotPasswordButton = document.getElementById("forgotPasswordButton");
+
+  loginForm?.addEventListener("submit", loginWithPassword);
+  signupForm?.addEventListener("submit", sendSignupEmailOtp);
+  otpLoginForm?.addEventListener("submit", sendLoginEmailOtp);
+  loginOtpShortcut?.addEventListener("click", () => {
+    const email = String(loginForm?.elements.email?.value || "").trim();
+    location.hash = "#/auth/otp";
+    window.setTimeout(() => {
+      const otpEmail = document.querySelector("#otpLoginForm input[name='email']");
+      if (otpEmail && email) otpEmail.value = email;
+      otpEmail?.focus();
+    }, 0);
+  });
+  forgotPasswordButton?.addEventListener("click", () => {
+    notify("Use Login with OTP to access your account, then update your password from Security.", "info");
+    loginOtpShortcut?.click();
+  });
+
+  if (mode === "signup" || mode === "otp") setupEmailOtpControls();
+}
+
+function setupEmailOtpControls() {
   const verifyButton = document.getElementById("verifyEmailOtpButton");
   const resendButton = document.getElementById("resendEmailOtpButton");
   const otpInputs = [...document.querySelectorAll("#emailOtpBoxes input")];
 
-  if (!form || !verifyButton || !resendButton || otpInputs.length !== EMAIL_OTP_LENGTH) return;
+  if (!verifyButton || !resendButton || otpInputs.length !== EMAIL_OTP_LENGTH) return;
 
-  form.addEventListener("submit", sendEmailOtp);
   verifyButton.addEventListener("click", verifyEmailOtp);
   resendButton.addEventListener("click", resendEmailOtp);
 
@@ -1092,25 +1224,82 @@ function setupEmailOtpAuth() {
   updateEmailAuthCooldown();
 }
 
-async function sendEmailOtp(event) {
+async function loginWithPassword(event) {
   event.preventDefault();
   const form = event.target;
-  const submitButton = document.getElementById("sendEmailOtpButton");
-  const formData = getEmailOtpFormData(form);
+  const submitButton = form.querySelector("button[type='submit']");
+  const formData = getLoginFormData(form);
   if (!formData) return;
-  await startEmailOtpRequest(formData, submitButton);
+
+  setButtonLoading(submitButton, true, "Logging in...");
+  try {
+    const client = await getSupabaseClient();
+    console.log(`[auth] password login for ${formData.email}`);
+    const { data, error } = await client.auth.signInWithPassword({
+      email: formData.email,
+      password: formData.password
+    });
+    if (error) {
+      console.error(error);
+      throw new Error(authErrorMessage(error, error.message || "Invalid email or password."));
+    }
+    if (!data?.session || !data?.user) throw new Error("Login succeeded, but Supabase did not return a session.");
+
+    await syncSessionFromSupabase(data.session);
+    await upsertUserProfile(data.user);
+    wishlistCache = null;
+    await getWishlist();
+    notify("Welcome back to Urban Kicks.", "success");
+    location.hash = "#/profile";
+  } catch (error) {
+    showAuthError(error, error.message || "Could not login.");
+  } finally {
+    setButtonLoading(submitButton, false);
+  }
+}
+
+async function sendSignupEmailOtp(event) {
+  event.preventDefault();
+  const formData = getSignupFormData(event.target);
+  if (!formData) return;
+  await startEmailOtpRequest({
+    flow: "signup",
+    email: formData.email,
+    profileData: formData,
+    shouldCreateUser: true,
+    button: document.getElementById("sendEmailOtpButton")
+  });
+}
+
+async function sendLoginEmailOtp(event) {
+  event.preventDefault();
+  const formData = getOtpLoginFormData(event.target);
+  if (!formData) return;
+  await startEmailOtpRequest({
+    flow: "login-otp",
+    email: formData.email,
+    profileData: formData,
+    shouldCreateUser: false,
+    button: document.getElementById("sendEmailOtpButton")
+  });
 }
 
 async function resendEmailOtp(event) {
   event.preventDefault();
-  const form = document.getElementById("emailOtpForm");
-  const button = document.getElementById("resendEmailOtpButton");
-  const formData = emailAuthState.profileData || (form ? getEmailOtpFormData(form) : null);
-  if (!formData) return;
-  await startEmailOtpRequest(formData, button);
+  if (!emailAuthState.email) {
+    notify("Start the email OTP flow again before requesting another code.", "error");
+    return;
+  }
+  await startEmailOtpRequest({
+    flow: emailAuthState.flow,
+    email: emailAuthState.email,
+    profileData: emailAuthState.profileData || { email: emailAuthState.email },
+    shouldCreateUser: emailAuthState.shouldCreateUser,
+    button: document.getElementById("resendEmailOtpButton")
+  });
 }
 
-async function startEmailOtpRequest(formData, button) {
+async function startEmailOtpRequest({ flow, email, profileData, shouldCreateUser, button }) {
   if (emailAuthState.inFlight) {
     notify("Authentication request already in progress. Please wait.", "error");
     return false;
@@ -1124,14 +1313,16 @@ async function startEmailOtpRequest(formData, button) {
   setButtonLoading(button, true, "Sending...");
   try {
     const client = await getSupabaseClient();
-    console.log(`[auth] email OTP request for ${formData.email}`);
+    console.log(`[auth] email OTP request for ${email}`);
     const { error } = await client.auth.signInWithOtp({
-      email: formData.email,
+      email,
       options: {
-        shouldCreateUser: true,
+        shouldCreateUser,
         data: {
-          name: formData.name,
-          mobile: formData.mobile
+          name: profileData?.name,
+          full_name: profileData?.name,
+          mobile: profileData?.mobile || "",
+          phone_number: profileData?.mobile || ""
         }
       }
     });
@@ -1140,8 +1331,10 @@ async function startEmailOtpRequest(formData, button) {
       throw new Error(authErrorMessage(error, error.message || "Could not send email OTP."));
     }
 
-    emailAuthState.email = formData.email;
-    emailAuthState.profileData = formData;
+    emailAuthState.email = email;
+    emailAuthState.profileData = profileData || { email };
+    emailAuthState.flow = flow;
+    emailAuthState.shouldCreateUser = shouldCreateUser;
     const otpPanel = document.getElementById("emailOtpPanel");
     if (otpPanel) otpPanel.hidden = false;
     resetEmailOtpInputs();
@@ -1162,13 +1355,11 @@ async function startEmailOtpRequest(formData, button) {
 async function verifyEmailOtp() {
   const verifyButton = document.getElementById("verifyEmailOtpButton");
   const token = syncEmailOtpValue();
-  const form = document.getElementById("emailOtpForm");
-  const email = emailAuthState.email || String(form?.elements.email?.value || "").trim();
-  const profileData = emailAuthState.profileData || (form ? getEmailOtpFormData(form) : null);
+  const email = emailAuthState.email;
+  const profileData = emailAuthState.profileData || { email };
 
   if (!validEmail(email)) {
-    notify("Enter your email again before verifying the OTP.", "error");
-    form?.elements.email?.focus();
+    notify("Request an email OTP before verifying.", "error");
     return;
   }
 
@@ -1205,7 +1396,9 @@ async function verifyEmailOtp() {
         password: profileData.password,
         data: {
           name: profileData.name,
-          mobile: profileData.mobile
+          full_name: profileData.name,
+          mobile: profileData.mobile || "",
+          phone_number: profileData.mobile || ""
         }
       });
       if (passwordError) {
@@ -1216,13 +1409,15 @@ async function verifyEmailOtp() {
     await syncSessionFromSupabase(authData.session);
     await upsertUserProfile(authData.user, {
       name: profileData?.name,
+      full_name: profileData?.name,
       email,
-      mobile: profileData?.mobile
+      mobile: profileData?.mobile || "",
+      phone_number: profileData?.mobile || ""
     });
     wishlistCache = null;
     await getWishlist();
     if (emailAuthState.timer) window.clearTimeout(emailAuthState.timer);
-    emailAuthState = { email: "", profileData: null, cooldownUntil: 0, timer: null, inFlight: false };
+    emailAuthState = { email: "", profileData: null, flow: "", shouldCreateUser: false, cooldownUntil: 0, timer: null, inFlight: false };
     notify("Email verified. Welcome to Urban Kicks India.", "success");
     location.hash = "#/profile";
   } catch (error) {
@@ -1253,26 +1448,336 @@ async function logout() {
   location.hash = "#/";
 }
 
-async function profilePage() {
+function normalizeProfile(session, profile = {}) {
+  const metadata = session.user?.user_metadata || {};
+  return {
+    id: session.user?.id,
+    name: profile.full_name || profile.name || metadata.full_name || metadata.name || "Urban Kicks Member",
+    email: profile.email || session.user?.email || "",
+    mobile: profile.phone_number || profile.mobile || metadata.phone_number || metadata.mobile || session.user?.phone || "",
+    image: profile.profile_image || metadata.profile_image || ""
+  };
+}
+
+function avatarMarkup(profile, size = "large") {
+  if (profile.image) {
+    return `<img class="profile-avatar ${size}" src="${profile.image}" alt="${safe(profile.name)}">`;
+  }
+  const initials = profile.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "UK";
+  return `<div class="profile-avatar ${size}" aria-label="${safe(profile.name)}">${safe(initials)}</div>`;
+}
+
+async function getAccountData() {
+  const session = getSession();
+  const [account, orders, transactions, wishlist, products] = await Promise.all([
+    api("/api/auth/me").catch(() => ({ user: session.user, profile: null })),
+    api("/api/orders/mine").catch(() => []),
+    api("/api/transactions").catch(() => []),
+    getWishlist().catch(() => []),
+    getProducts().catch(() => placeholderProducts)
+  ]);
+  return {
+    session,
+    profile: normalizeProfile(session, account.profile || {}),
+    orders,
+    transactions,
+    wishlist,
+    products
+  };
+}
+
+function accountCard(title, copy, href, action = "Open") {
+  return `
+    <a class="account-card" href="${href}">
+      <div>
+        <span class="account-card-kicker">${safe(action)}</span>
+        <h3>${safe(title)}</h3>
+        <p>${safe(copy)}</p>
+      </div>
+      <span class="account-arrow">&gt;</span>
+    </a>
+  `;
+}
+
+async function profilePage(section = "overview") {
   const session = getSession();
   if (!session) return authPage();
-  const [orders, transactions] = await Promise.all([
-    api("/api/orders/mine").catch(() => []),
-    api("/api/transactions").catch(() => [])
-  ]);
+  const account = await getAccountData();
+  if (section === "edit") return profileEditPage(account);
+  if (section === "security") return profileSecurityPage(account);
+  if (section !== "overview") return profileSectionPage(account, section);
+  const cartItems = getCart();
+  const delivered = account.orders.filter((order) => order.status === "Delivered").length;
+  const cancelled = account.orders.filter((order) => order.status === "Cancelled").length;
+  const latestOrders = account.orders.slice(0, 3);
+
   app.innerHTML = `
-    <section class="section">
-      ${sectionHead("Profile", "Your account", "Saved orders, checkout details, and transaction records.")}
-      <div class="schema-grid">
-        <article class="mini-card"><h3>${safe(session.user?.user_metadata?.name || "Urban Kicks Member")}</h3><p class="meta">${safe(session.user?.email || "Email session active")}</p><button class="button danger" onclick="logout()">Logout</button></article>
-        <article class="mini-card"><h3>Order history</h3><p class="meta">${orders.length} saved orders</p></article>
-        <article class="mini-card"><h3>Transactions</h3><p class="meta">${transactions.length} COD transaction records</p></article>
+    <section class="profile-shell">
+      <div class="profile-hero-card">
+        <div class="profile-identity">
+          ${avatarMarkup(account.profile)}
+          <div>
+            <p class="eyebrow">Urban Kicks member</p>
+            <h1>${safe(account.profile.name)}</h1>
+            <p>${safe(account.profile.email || "Email session active")}${account.profile.mobile ? ` / ${safe(account.profile.mobile)}` : ""}</p>
+          </div>
+        </div>
+        <div class="profile-actions">
+          <a class="button light" href="#/profile/edit">Edit Profile</a>
+          <button class="button danger" onclick="logout()">Logout</button>
+        </div>
       </div>
-      <div class="admin-table">
-        ${orders.map((order) => `<article class="order-card"><div><strong>${safe(order.status)}</strong><div class="meta">${money(order.total)} / ${safe(order.paymentMethod)} / ${safe(order.createdAt || "")}</div></div></article>`).join("")}
+
+      <div class="profile-stats">
+        <article><strong>${account.orders.length}</strong><span>Orders</span></article>
+        <article><strong>${account.wishlist.length}</strong><span>Wishlist</span></article>
+        <article><strong>${cartItems.length}</strong><span>Cart Items</span></article>
+        <article><strong>${account.transactions.length}</strong><span>Transactions</span></article>
+      </div>
+
+      <div class="account-layout">
+        <aside class="account-side">
+          <a class="active" href="#/profile">Overview</a>
+          <a href="#/profile/orders">Orders</a>
+          <a href="#/wishlist">Wishlist</a>
+          <a href="#/cart">Cart</a>
+          <a href="#/profile/security">Security</a>
+          <a href="#/about">About Urban Kicks</a>
+        </aside>
+        <div class="account-main">
+          <div class="account-card-grid">
+            ${accountCard("Orders", `${account.orders.length} total / ${delivered} delivered / ${cancelled} cancelled`, "#/profile/orders", "Track")}
+            ${accountCard("Wishlist", `${account.wishlist.length} saved sneakers`, "#/wishlist", "Saved")}
+            ${accountCard("Cart", `${cartItems.reduce((sum, item) => sum + item.quantity, 0)} items waiting`, "#/cart", "Checkout")}
+            ${accountCard("Addresses", "Add, edit, or delete delivery addresses", "#/profile/addresses", "Manage")}
+            ${accountCard("Payment Methods", "Cash on Delivery active. Online payments ready later.", "#/profile/payments", "Payment")}
+            ${accountCard("Notifications", "Email and drop alert preferences", "#/profile/notifications", "Alerts")}
+            ${accountCard("Security", "Change password and logout from all devices", "#/profile/security", "Protect")}
+            ${accountCard("Help & Support", "FAQ, contact support, returns, and refunds", "#/profile/help", "Support")}
+            ${accountCard("About Urban Kicks", "Brand story, terms, and privacy", "#/about", "Brand")}
+            ${accountCard("Logout", "Securely end this session", "javascript:logout()", "Exit")}
+          </div>
+
+          <section class="account-panel">
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">Recent activity</p>
+                <h2>Orders and movement</h2>
+                <p>Your latest sneaker orders and saved activity appear here.</p>
+              </div>
+            </div>
+            <div class="order-feed">
+              ${latestOrders.map((order) => `<article class="order-card"><div><strong>${safe(order.status)}</strong><div class="meta">${money(order.total)} / ${safe(order.paymentMethod)} / ${safe(order.createdAt || "")}</div></div><a class="button light" href="#/confirmation/${order._id}">View</a></article>`).join("") || '<div class="premium-empty"><h3>No orders yet</h3><p>Start with a new drop and your order history will appear here.</p><a class="button primary" href="#/">Shop sneakers</a></div>'}
+            </div>
+          </section>
+        </div>
       </div>
     </section>
   `;
+}
+
+function profileEditPage(account) {
+  app.innerHTML = `
+    <section class="profile-shell narrow">
+      <a class="text-button back-link" href="#/profile">Back to account</a>
+      <div class="profile-hero-card">
+        <div class="profile-identity">
+          ${avatarMarkup(account.profile)}
+          <div>
+            <p class="eyebrow">Edit Profile</p>
+            <h1>Refine your account</h1>
+            <p>Update your personal details and profile picture.</p>
+          </div>
+        </div>
+      </div>
+      <form class="panel profile-edit-form" id="profileEditForm">
+        <label>Full Name<input name="name" required value="${safe(account.profile.name)}"></label>
+        <label>Email<input name="email" type="email" required value="${safe(account.profile.email)}"></label>
+        <label>Phone Number<input name="mobile" type="tel" inputmode="tel" value="${safe(account.profile.mobile)}" placeholder="+91 90000 00000"></label>
+        <label>Profile Picture<input name="profileImageFile" type="file" accept="image/*"></label>
+        <input type="hidden" name="profile_image" value="${safe(account.profile.image)}">
+        <div id="profilePreview" class="profile-preview">${avatarMarkup(account.profile, "medium")}</div>
+        <button class="button primary" type="submit"><span class="button-label">Save Changes</span><span class="button-spinner" aria-hidden="true"></span></button>
+      </form>
+    </section>
+  `;
+  setupProfileEditForm();
+}
+
+function profileSecurityPage(account) {
+  app.innerHTML = `
+    <section class="profile-shell narrow">
+      <a class="text-button back-link" href="#/profile">Back to account</a>
+      <div class="profile-hero-card">
+        <div class="profile-identity">
+          ${avatarMarkup(account.profile)}
+          <div>
+            <p class="eyebrow">Security</p>
+            <h1>Account protection</h1>
+            <p>Change password, keep sessions fresh, and logout securely.</p>
+          </div>
+        </div>
+      </div>
+      <div class="security-grid">
+        <form class="panel profile-edit-form" id="passwordForm">
+          <h2>Change password</h2>
+          <label>New Password<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
+          <button class="button primary" type="submit"><span class="button-label">Update Password</span><span class="button-spinner" aria-hidden="true"></span></button>
+        </form>
+        <article class="panel security-card">
+          <h2>Logout from all devices</h2>
+          <p class="meta">End every active Supabase session for this account.</p>
+          <button class="button danger" onclick="logoutAllDevices()">Logout everywhere</button>
+        </article>
+      </div>
+    </section>
+  `;
+  document.getElementById("passwordForm").addEventListener("submit", changePassword);
+}
+
+function profileSectionPage(account, section) {
+  const titles = {
+    orders: ["Orders", "Track, review, and manage sneaker orders."],
+    addresses: ["Addresses", "Add, edit, or remove saved delivery addresses."],
+    payments: ["Payment Methods", "Cash on Delivery is active. UPI and cards can be enabled later."],
+    notifications: ["Notifications", "Control email alerts, drop reminders, and account updates."],
+    help: ["Help & Support", "FAQ, contact support, returns, refunds, and policies."]
+  };
+  const [title, copy] = titles[section] || ["Account", "Manage your Urban Kicks profile."];
+  const content = section === "orders"
+    ? account.orders.map((order) => `<article class="order-card"><div><strong>${safe(order.status)}</strong><div class="meta">${money(order.total)} / ${safe(order.paymentMethod)} / ${safe(order.createdAt || "")}</div></div><a class="button light" href="#/confirmation/${order._id}">View</a></article>`).join("") || '<div class="premium-empty"><h3>No orders yet</h3><p>Your future orders will appear here.</p><a class="button primary" href="#/">Shop sneakers</a></div>'
+    : `<div class="premium-empty"><h3>${safe(title)} coming alive</h3><p>${safe(copy)} This section is structured for production data and ready for backend expansion.</p><a class="button light" href="#/profile">Back to account</a></div>`;
+
+  app.innerHTML = `
+    <section class="profile-shell narrow">
+      <a class="text-button back-link" href="#/profile">Back to account</a>
+      <section class="account-panel">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h2>${safe(title)}</h2>
+            <p>${safe(copy)}</p>
+          </div>
+        </div>
+        <div class="order-feed">${content}</div>
+      </section>
+    </section>
+  `;
+}
+
+function setupProfileEditForm() {
+  const form = document.getElementById("profileEditForm");
+  const fileInput = form.elements.profileImageFile;
+  const hiddenImage = form.elements.profile_image;
+  const preview = document.getElementById("profilePreview");
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    if (file.size > 900000) {
+      notify("Choose a profile image under 900 KB for fast loading.", "error");
+      fileInput.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      hiddenImage.value = reader.result;
+      preview.innerHTML = `<img class="profile-avatar medium" src="${reader.result}" alt="Profile preview">`;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  form.addEventListener("submit", saveProfile);
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  const form = event.target;
+  const button = form.querySelector("button[type='submit']");
+  const data = Object.fromEntries(new FormData(form));
+  const name = String(data.name || "").trim();
+  const email = String(data.email || "").trim();
+  const mobile = data.mobile ? normalizePhoneNumber(data.mobile) : "";
+  const profileImage = String(data.profile_image || "");
+
+  if (!name) return notify("Enter your full name.", "error");
+  if (!validEmail(email)) return notify("Enter a valid email address.", "error");
+  if (data.mobile && !mobile) return notify("Enter a valid phone number with country code.", "error");
+
+  setButtonLoading(button, true, "Saving...");
+  try {
+    const client = await getSupabaseClient();
+    const updatePayload = {
+      data: {
+        name,
+        full_name: name,
+        mobile,
+        phone_number: mobile,
+        profile_image: profileImage
+      }
+    };
+    if (email !== getSession()?.user?.email) updatePayload.email = email;
+    const { data: updated, error } = await client.auth.updateUser(updatePayload);
+    if (error) {
+      console.error(error);
+      throw new Error(authErrorMessage(error, error.message || "Could not update profile."));
+    }
+    await upsertUserProfile(updated.user || getUser(), {
+      name,
+      full_name: name,
+      email,
+      mobile,
+      phone_number: mobile,
+      profile_image: profileImage
+    });
+    const { data: sessionData } = await client.auth.getSession();
+    if (sessionData.session) await syncSessionFromSupabase(sessionData.session);
+    notify("Profile updated.", "success");
+    location.hash = "#/profile";
+  } catch (error) {
+    showAuthError(error, error.message || "Could not update profile.");
+  } finally {
+    setButtonLoading(button, false);
+  }
+}
+
+async function changePassword(event) {
+  event.preventDefault();
+  const form = event.target;
+  const button = form.querySelector("button[type='submit']");
+  const password = String(new FormData(form).get("password") || "");
+  if (password.length < 6) return notify("Password must be at least 6 characters.", "error");
+
+  setButtonLoading(button, true, "Updating...");
+  try {
+    const client = await getSupabaseClient();
+    const { error } = await client.auth.updateUser({ password });
+    if (error) {
+      console.error(error);
+      throw new Error(authErrorMessage(error, error.message || "Could not update password."));
+    }
+    form.reset();
+    notify("Password updated securely.", "success");
+  } catch (error) {
+    showAuthError(error, error.message || "Could not update password.");
+  } finally {
+    setButtonLoading(button, false);
+  }
+}
+
+async function logoutAllDevices() {
+  try {
+    const client = await getSupabaseClient();
+    const { error } = await client.auth.signOut({ scope: "global" });
+    if (error) throw error;
+    localStorage.removeItem(SESSION_KEY);
+    wishlistCache = null;
+    renderCounters();
+    notify("Logged out from all devices.", "success");
+    location.hash = "#/";
+  } catch (error) {
+    showAuthError(error, error.message || "Could not logout from all devices.");
+  }
 }
 
 function settingsPage() {
@@ -1468,8 +1973,8 @@ async function router() {
     if (parts[0] === "checkout") return checkoutPage();
     if (parts[0] === "confirmation") return confirmationPage(parts[1]);
     if (parts[0] === "wishlist") return wishlistPage();
-    if (parts[0] === "auth") return authPage();
-    if (parts[0] === "profile") return profilePage();
+    if (parts[0] === "auth") return authPage(parts[1] || "login");
+    if (parts[0] === "profile") return profilePage(parts[1] || "overview");
     if (parts[0] === "settings") return settingsPage();
     if (parts[0] === "admin") return adminPage();
     if (["about", "terms", "privacy"].includes(parts[0])) return infoPage(parts[0].replace(/^\w/, (c) => c.toUpperCase()));
@@ -1488,6 +1993,7 @@ window.removeItem = removeItem;
 window.swapImage = swapImage;
 window.toggleTheme = toggleTheme;
 window.logout = logout;
+window.logoutAllDevices = logoutAllDevices;
 window.notify = notify;
 window.editProduct = editProduct;
 window.resetAdminForm = resetAdminForm;

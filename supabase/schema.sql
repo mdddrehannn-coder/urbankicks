@@ -3,12 +3,25 @@ create extension if not exists "pgcrypto";
 create table if not exists public.users (
   id uuid primary key references auth.users(id) on delete cascade,
   name text not null default 'Urban Kicks Member',
+  full_name text not null default 'Urban Kicks Member',
   email text,
   mobile text,
+  phone_number text,
+  profile_image text,
   role text not null default 'customer' check (role in ('customer', 'admin')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.users add column if not exists full_name text not null default 'Urban Kicks Member';
+alter table public.users add column if not exists phone_number text;
+alter table public.users add column if not exists profile_image text;
+
+update public.users
+set
+  full_name = coalesce(nullif(full_name, ''), nullif(name, ''), 'Urban Kicks Member'),
+  phone_number = coalesce(nullif(phone_number, ''), nullif(mobile, ''), '')
+where full_name is null or full_name = '' or phone_number is null;
 
 create or replace function public.handle_new_auth_user()
 returns trigger
@@ -17,18 +30,24 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.users (id, name, email, mobile, role)
+  insert into public.users (id, name, full_name, email, mobile, phone_number, profile_image, role)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'name', 'Urban Kicks Member'),
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', 'Urban Kicks Member'),
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', 'Urban Kicks Member'),
     new.email,
-    coalesce(new.phone, new.raw_user_meta_data->>'mobile', ''),
+    coalesce(new.phone, new.raw_user_meta_data->>'phone_number', new.raw_user_meta_data->>'mobile', ''),
+    coalesce(new.phone, new.raw_user_meta_data->>'phone_number', new.raw_user_meta_data->>'mobile', ''),
+    coalesce(new.raw_user_meta_data->>'profile_image', ''),
     'customer'
   )
   on conflict (id) do update set
     name = excluded.name,
+    full_name = excluded.full_name,
     email = excluded.email,
     mobile = excluded.mobile,
+    phone_number = excluded.phone_number,
+    profile_image = excluded.profile_image,
     updated_at = now();
 
   return new;
