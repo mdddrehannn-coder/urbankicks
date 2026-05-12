@@ -74,6 +74,9 @@ function authErrorMessage(error, fallback = "Authentication failed. Please try a
     return "Please verify your email with the 6-digit OTP sent to your inbox.";
   }
   if (lower.includes("expired")) return "This email OTP has expired. Please request a new code.";
+  if (lower.includes("signup not allowed") && lower.includes("otp")) {
+    return "OTP signup is disabled in Supabase. Enable email signups and OTP signup in Authentication settings, then try again.";
+  }
   if (lower.includes("signup") && lower.includes("disabled")) return "No Urban Kicks account exists for this email. Please contact support to activate your account.";
   if (lower.includes("user") && lower.includes("not") && lower.includes("found")) return "No Urban Kicks account exists for this email. Please check the address or contact support.";
   if (lower.includes("too many") || lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
@@ -1248,10 +1251,17 @@ async function startEmailOtpRequest({ flow, email, profileData, button }) {
   try {
     const client = await getSupabaseClient();
     console.log(`[auth] email OTP request for ${email}`);
+    const shouldCreateUser = flow === "signup";
     const { data, error } = await client.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: false
+        shouldCreateUser,
+        data: shouldCreateUser ? {
+          name: profileData?.name || "",
+          full_name: profileData?.name || "",
+          mobile: profileData?.mobile || "",
+          phone_number: profileData?.mobile || ""
+        } : undefined
       }
     });
     if (error) {
@@ -1262,7 +1272,7 @@ async function startEmailOtpRequest({ flow, email, profileData, button }) {
     emailAuthState.email = email;
     emailAuthState.profileData = profileData || { email };
     emailAuthState.flow = flow;
-    emailAuthState.shouldCreateUser = false;
+    emailAuthState.shouldCreateUser = shouldCreateUser;
     const otpPanel = document.getElementById("emailOtpPanel");
     if (otpPanel) otpPanel.hidden = false;
     resetEmailOtpInputs();

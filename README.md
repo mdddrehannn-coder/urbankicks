@@ -62,11 +62,14 @@ Open `http://localhost:5000`.
 - `GET /api/auth/me` reads the current Supabase user.
 - Frontend auth uses manual 6-digit Email OTP with the official browser Supabase client methods:
   - `supabase.auth.signInWithOtp()`
+    - signup uses `shouldCreateUser: true`
+    - login/recovery uses `shouldCreateUser: false`
   - `supabase.auth.verifyOtp()`
   - `supabase.auth.signOut()`
   - `supabase.auth.getSession()`
   - `supabase.auth.onAuthStateChange()`
 - Supabase email templates must show `{{ .Token }}` only and must not include clickable authentication URLs. See `supabase/email-otp-template.md`.
+- Supabase Auth must allow new user signups for OTP signup to work. If Supabase returns `Signup not allowed for OTP`, enable signups/email OTP in the Supabase Authentication settings.
 - `GET /api/wishlist`, `POST /api/wishlist`, `DELETE /api/wishlist/:productId` sync wishlist.
 - `POST /api/orders` creates a Cash on Delivery order and transaction record.
 - `GET /api/orders/mine` shows user order history.
