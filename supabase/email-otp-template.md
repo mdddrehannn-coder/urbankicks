@@ -1,6 +1,6 @@
 # Urban Kicks Email OTP Template
 
-Use this in Supabase Dashboard > Authentication > Email Templates for confirmation and magic-link style emails so customers see only the manual code.
+Use this in Supabase Dashboard > Authentication > Email Templates so customers see only the manual verification code.
 
 Subject:
 
@@ -16,4 +16,4 @@ This code expires quickly. Return to the Urban Kicks app and enter the 6-digit c
 
 If you did not request this code, ignore this email.
 
-Do not include `{{ .ConfirmationURL }}`, `{{ .RedirectTo }}`, or any clickable authentication link in the template.
+Do not include any clickable authentication URL in the template.

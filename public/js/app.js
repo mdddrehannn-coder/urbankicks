@@ -74,6 +74,8 @@ function authErrorMessage(error, fallback = "Authentication failed. Please try a
     return "Please verify your email with the 6-digit OTP sent to your inbox.";
   }
   if (lower.includes("expired")) return "This email OTP has expired. Please request a new code.";
+  if (lower.includes("signup") && lower.includes("disabled")) return "No Urban Kicks account exists for this email. Please contact support to activate your account.";
+  if (lower.includes("user") && lower.includes("not") && lower.includes("found")) return "No Urban Kicks account exists for this email. Please check the address or contact support.";
   if (lower.includes("too many") || lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
     return "Too many email requests. Please wait a minute before trying again.";
   }
@@ -953,7 +955,7 @@ function loginFormMarkup() {
   return `
     <p class="eyebrow">Email OTP Login</p>
     <h1>Login</h1>
-    <p class="auth-note">Enter your email and we will send a 6-digit OTP code. No clickable email links are used by the app.</p>
+    <p class="auth-note">Enter your email and we will send a 6-digit OTP code for manual verification.</p>
     <form class="form email-auth-form" id="otpLoginForm">
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
       <button class="button dark" type="submit" id="sendEmailOtpButton">
@@ -973,7 +975,7 @@ function signupFormMarkup() {
   return `
     <p class="eyebrow">Create Account</p>
     <h1>Sign Up</h1>
-    <p class="auth-note">Create your Urban Kicks profile. We will send a 6-digit email OTP before activating the session.</p>
+    <p class="auth-note">Enter your profile details and verify your existing Urban Kicks email with a 6-digit OTP.</p>
     <form class="form email-auth-form" id="signupForm">
       <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
@@ -1009,7 +1011,7 @@ function forgotFormMarkup() {
   return `
     <p class="eyebrow">Account Recovery</p>
     <h1>Forgot Password?</h1>
-    <p class="auth-note">Recover access with the same secure 6-digit email OTP flow. No reset links or redirects.</p>
+    <p class="auth-note">Recover access with the same secure 6-digit email OTP flow inside Urban Kicks.</p>
     <form class="form email-auth-form" id="otpLoginForm">
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
       <button class="button dark" type="submit" id="sendEmailOtpButton">
@@ -1201,7 +1203,6 @@ async function sendSignupEmailOtp(event) {
     flow: "signup",
     email: formData.email,
     profileData: formData,
-    shouldCreateUser: true,
     button: document.getElementById("sendEmailOtpButton")
   });
 }
@@ -1214,7 +1215,6 @@ async function sendLoginEmailOtp(event) {
     flow: "login-otp",
     email: formData.email,
     profileData: formData,
-    shouldCreateUser: false,
     button: document.getElementById("sendEmailOtpButton")
   });
 }
@@ -1229,12 +1229,11 @@ async function resendEmailOtp(event) {
     flow: emailAuthState.flow,
     email: emailAuthState.email,
     profileData: emailAuthState.profileData || { email: emailAuthState.email },
-    shouldCreateUser: emailAuthState.shouldCreateUser,
     button: document.getElementById("resendEmailOtpButton")
   });
 }
 
-async function startEmailOtpRequest({ flow, email, profileData, shouldCreateUser, button }) {
+async function startEmailOtpRequest({ flow, email, profileData, button }) {
   if (emailAuthState.inFlight) {
     notify("Authentication request already in progress. Please wait.", "error");
     return false;
@@ -1249,16 +1248,10 @@ async function startEmailOtpRequest({ flow, email, profileData, shouldCreateUser
   try {
     const client = await getSupabaseClient();
     console.log(`[auth] email OTP request for ${email}`);
-    const { error } = await client.auth.signInWithOtp({
+    const { data, error } = await client.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser,
-        data: {
-          name: profileData?.name,
-          full_name: profileData?.name,
-          mobile: profileData?.mobile || "",
-          phone_number: profileData?.mobile || ""
-        }
+        shouldCreateUser: false
       }
     });
     if (error) {
@@ -1269,7 +1262,7 @@ async function startEmailOtpRequest({ flow, email, profileData, shouldCreateUser
     emailAuthState.email = email;
     emailAuthState.profileData = profileData || { email };
     emailAuthState.flow = flow;
-    emailAuthState.shouldCreateUser = shouldCreateUser;
+    emailAuthState.shouldCreateUser = false;
     const otpPanel = document.getElementById("emailOtpPanel");
     if (otpPanel) otpPanel.hidden = false;
     resetEmailOtpInputs();
@@ -1541,7 +1534,7 @@ function profileSecurityPage(account) {
       <div class="security-grid">
         <article class="panel security-card">
           <h2>Email OTP only</h2>
-          <p class="meta">Login, signup, and recovery all use a manual 6-digit email OTP. No clickable auth links are used inside the app.</p>
+          <p class="meta">Login, signup, and recovery all use a manual 6-digit email OTP inside the app.</p>
           <a class="button primary" href="#/auth">Send OTP</a>
         </article>
         <article class="panel security-card">
