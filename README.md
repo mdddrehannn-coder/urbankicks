@@ -54,8 +54,8 @@ Open `http://localhost:5000`.
 - `GET /api/products` lists products and supports `brand`, `category`, and `q` filters.
 - `GET /api/products/:id` gets product detail.
 - `POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id` manage products.
-- `POST /api/auth/signup` is retained for compatibility, but the storefront uses browser Email OTP auth.
-- `POST /api/auth/login` is retained for compatibility, but the storefront uses browser Email OTP auth.
+- `POST /api/auth/signup` is disabled; the storefront uses browser Email OTP auth only.
+- `POST /api/auth/login` is disabled; the storefront uses browser Email OTP auth only.
 - `POST /api/auth/logout` logs out.
 - `POST /api/auth/refresh` refreshes persistent sessions.
 - `GET /api/auth/status` checks auth wiring.
@@ -63,10 +63,10 @@ Open `http://localhost:5000`.
 - Frontend auth uses manual 6-digit Email OTP with the official browser Supabase client methods:
   - `supabase.auth.signInWithOtp()`
   - `supabase.auth.verifyOtp()`
-  - `supabase.auth.updateUser()` to save the password after OTP verification
   - `supabase.auth.signOut()`
   - `supabase.auth.getSession()`
   - `supabase.auth.onAuthStateChange()`
+- Supabase email templates must show `{{ .Token }}` only and must not include `{{ .ConfirmationURL }}` or redirect links. See `supabase/email-otp-template.md`.
 - `GET /api/wishlist`, `POST /api/wishlist`, `DELETE /api/wishlist/:productId` sync wishlist.
 - `POST /api/orders` creates a Cash on Delivery order and transaction record.
 - `GET /api/orders/mine` shows user order history.

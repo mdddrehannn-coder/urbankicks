@@ -69,11 +69,7 @@ function authErrorMessage(error, fallback = "Authentication failed. Please try a
   if ((lower.includes("invalid") && lower.includes("otp")) || (lower.includes("invalid") && lower.includes("token"))) {
     return "Invalid OTP. Please check the 6-digit email code and try again.";
   }
-  if (lower.includes("invalid login credentials")) {
-    return fallback.toLowerCase().includes("password")
-      ? "Invalid email or password. Please check your details and try again."
-      : "Invalid email OTP. Please request a fresh code and try again.";
-  }
+  if (lower.includes("invalid login credentials")) return "Invalid email OTP. Please request a fresh code and try again.";
   if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
     return "Please verify your email with the 6-digit OTP sent to your inbox.";
   }
@@ -908,6 +904,7 @@ function authPage(mode = "login") {
   }
   const isSignup = mode === "signup";
   const isOtp = mode === "otp";
+  const isForgot = mode === "forgot";
   app.innerHTML = `
     <section class="auth-layout">
       <div class="auth-brand-panel">
@@ -927,21 +924,20 @@ function authPage(mode = "login") {
           <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks">
         </div>
         <div class="auth-tabs" aria-label="Authentication options">
-          <a class="${!isSignup && !isOtp ? "active" : ""}" href="#/auth">Login</a>
+          <a class="${!isSignup && !isOtp && !isForgot ? "active" : ""}" href="#/auth">Login</a>
           <a class="${isSignup ? "active" : ""}" href="#/auth/signup">Sign Up</a>
-          <a class="${isOtp ? "active" : ""}" href="#/auth/otp">Email OTP</a>
+          <a class="${isOtp || isForgot ? "active" : ""}" href="#/auth/otp">Email OTP</a>
         </div>
-        ${isSignup ? signupFormMarkup() : isOtp ? otpLoginFormMarkup() : loginFormMarkup()}
+        ${isSignup ? signupFormMarkup() : isForgot ? forgotFormMarkup() : isOtp ? otpLoginFormMarkup() : loginFormMarkup()}
       </div>
       <div class="panel auth-signup-panel">
         <div class="auth-panel-logo compact">
           <img src="/assets/urban-kicks-logo.png" alt="Urban Kicks">
         </div>
         <p class="eyebrow">Secure sneaker account</p>
-        <h1>${isSignup ? "Create your vault" : isOtp ? "Verify by code" : "Welcome back"}</h1>
-        <p class="auth-note">${isSignup ? "Create an account with email verification and save your profile for future drops." : isOtp ? "Use a real 6-digit email OTP. No localhost redirects, no link-based login." : "Login with password, or switch to Email OTP if you want a code-only sign in."}</p>
+        <h1>${isSignup ? "Create your vault" : isForgot ? "Recover by OTP" : isOtp ? "Verify by code" : "Welcome back"}</h1>
+        <p class="auth-note">${isSignup ? "Create an account with email OTP verification and save your profile for future drops." : "Use a real 6-digit email OTP. No localhost redirects, no link-based login."}</p>
         <div class="auth-feature-list">
-          <span>Password login</span>
           <span>Real 6-digit email OTP</span>
           <span>60-second resend timer</span>
           <span>Persistent account session</span>
@@ -955,22 +951,21 @@ function authPage(mode = "login") {
 
 function loginFormMarkup() {
   return `
-    <p class="eyebrow">Member Login</p>
+    <p class="eyebrow">Email OTP Login</p>
     <h1>Login</h1>
-    <p class="auth-note">Use email and password for fast access, or request a 6-digit email OTP.</p>
-    <form class="form email-auth-form" id="loginForm">
+    <p class="auth-note">Enter your email and we will send a 6-digit OTP code. No clickable email links are used by the app.</p>
+    <form class="form email-auth-form" id="otpLoginForm">
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
-      <label>Password<input name="password" type="password" required autocomplete="current-password" placeholder="Your password"></label>
-      <button class="button dark" type="submit">
-        <span class="button-label">Login</span>
+      <button class="button dark" type="submit" id="sendEmailOtpButton">
+        <span class="button-label">Send OTP</span>
         <span class="button-spinner" aria-hidden="true"></span>
       </button>
     </form>
     <div class="auth-action-row">
-      <button class="text-button" type="button" id="loginOtpShortcut">Login with OTP</button>
-      <button class="text-button" type="button" id="forgotPasswordButton">Forgot Password?</button>
+      <a class="text-button" href="#/auth/forgot">Forgot Password?</a>
     </div>
     <p class="auth-switch">Don't have an account? <a href="#/auth/signup">Sign Up</a></p>
+    ${otpPanelMarkup()}
   `;
 }
 
@@ -982,7 +977,6 @@ function signupFormMarkup() {
     <form class="form email-auth-form" id="signupForm">
       <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
-      <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
       <label>Phone Number <span class="optional-label">Optional</span><input name="mobile" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
       <button class="button primary" type="submit" id="sendEmailOtpButton">
         <span class="button-label">Create Account</span>
@@ -1006,7 +1000,24 @@ function otpLoginFormMarkup() {
         <span class="button-spinner" aria-hidden="true"></span>
       </button>
     </form>
-    <p class="auth-switch">Remember your password? <a href="#/auth">Login</a></p>
+    <p class="auth-switch">New to Urban Kicks? <a href="#/auth/signup">Create account</a></p>
+    ${otpPanelMarkup()}
+  `;
+}
+
+function forgotFormMarkup() {
+  return `
+    <p class="eyebrow">Account Recovery</p>
+    <h1>Forgot Password?</h1>
+    <p class="auth-note">Recover access with the same secure 6-digit email OTP flow. No reset links or redirects.</p>
+    <form class="form email-auth-form" id="otpLoginForm">
+      <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+      <button class="button dark" type="submit" id="sendEmailOtpButton">
+        <span class="button-label">Send Recovery OTP</span>
+        <span class="button-spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+    <p class="auth-switch">Back to <a href="#/auth">Login</a></p>
     ${otpPanelMarkup()}
   `;
 }
@@ -1100,7 +1111,6 @@ function getSignupFormData(form) {
   const mobile = normalizePhoneNumber(data.mobile);
   const email = String(data.email || "").trim();
   const name = String(data.name || "").trim();
-  const password = String(data.password || "");
 
   if (!name) {
     notify("Enter your full name to create your Urban Kicks account.", "error");
@@ -1114,37 +1124,13 @@ function getSignupFormData(form) {
     return null;
   }
 
-  if (password.length < 6) {
-    notify("Password must be at least 6 characters.", "error");
-    form.elements.password.focus();
-    return null;
-  }
-
   if (data.mobile && !mobile) {
     notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
     form.elements.mobile.focus();
     return null;
   }
 
-  return { name, email, password, mobile };
-}
-
-function getLoginFormData(form) {
-  const data = Object.fromEntries(new FormData(form));
-  const email = String(data.email || "").trim();
-  const password = String(data.password || "");
-
-  if (!validEmail(email)) {
-    notify("Enter a valid email address.", "error");
-    form.elements.email.focus();
-    return null;
-  }
-  if (!password) {
-    notify("Enter your password.", "error");
-    form.elements.password.focus();
-    return null;
-  }
-  return { email, password };
+  return { name, email, mobile };
 }
 
 function getOtpLoginFormData(form) {
@@ -1159,30 +1145,13 @@ function getOtpLoginFormData(form) {
 }
 
 function setupAuthForms(mode) {
-  const loginForm = document.getElementById("loginForm");
   const signupForm = document.getElementById("signupForm");
   const otpLoginForm = document.getElementById("otpLoginForm");
-  const loginOtpShortcut = document.getElementById("loginOtpShortcut");
-  const forgotPasswordButton = document.getElementById("forgotPasswordButton");
 
-  loginForm?.addEventListener("submit", loginWithPassword);
   signupForm?.addEventListener("submit", sendSignupEmailOtp);
   otpLoginForm?.addEventListener("submit", sendLoginEmailOtp);
-  loginOtpShortcut?.addEventListener("click", () => {
-    const email = String(loginForm?.elements.email?.value || "").trim();
-    location.hash = "#/auth/otp";
-    window.setTimeout(() => {
-      const otpEmail = document.querySelector("#otpLoginForm input[name='email']");
-      if (otpEmail && email) otpEmail.value = email;
-      otpEmail?.focus();
-    }, 0);
-  });
-  forgotPasswordButton?.addEventListener("click", () => {
-    notify("Use Login with OTP to access your account, then update your password from Security.", "info");
-    loginOtpShortcut?.click();
-  });
 
-  if (mode === "signup" || mode === "otp") setupEmailOtpControls();
+  if (mode === "signup" || mode === "otp" || mode === "forgot" || mode === "login") setupEmailOtpControls();
 }
 
 function setupEmailOtpControls() {
@@ -1222,40 +1191,6 @@ function setupEmailOtpControls() {
   });
 
   updateEmailAuthCooldown();
-}
-
-async function loginWithPassword(event) {
-  event.preventDefault();
-  const form = event.target;
-  const submitButton = form.querySelector("button[type='submit']");
-  const formData = getLoginFormData(form);
-  if (!formData) return;
-
-  setButtonLoading(submitButton, true, "Logging in...");
-  try {
-    const client = await getSupabaseClient();
-    console.log(`[auth] password login for ${formData.email}`);
-    const { data, error } = await client.auth.signInWithPassword({
-      email: formData.email,
-      password: formData.password
-    });
-    if (error) {
-      console.error(error);
-      throw new Error(authErrorMessage(error, error.message || "Invalid email or password."));
-    }
-    if (!data?.session || !data?.user) throw new Error("Login succeeded, but Supabase did not return a session.");
-
-    await syncSessionFromSupabase(data.session);
-    await upsertUserProfile(data.user);
-    wishlistCache = null;
-    await getWishlist();
-    notify("Welcome back to Urban Kicks.", "success");
-    location.hash = "#/profile";
-  } catch (error) {
-    showAuthError(error, error.message || "Could not login.");
-  } finally {
-    setButtonLoading(submitButton, false);
-  }
 }
 
 async function sendSignupEmailOtp(event) {
@@ -1389,21 +1324,6 @@ async function verifyEmailOtp() {
     }
     if (!authData?.session || !authData?.user) {
       throw new Error("Email OTP verified, but Supabase did not return a session. Please try again.");
-    }
-
-    if (profileData?.password) {
-      const { error: passwordError } = await client.auth.updateUser({
-        password: profileData.password,
-        data: {
-          name: profileData.name,
-          full_name: profileData.name,
-          mobile: profileData.mobile || "",
-          phone_number: profileData.mobile || ""
-        }
-      });
-      if (passwordError) {
-        console.error(passwordError);
-      }
     }
 
     await syncSessionFromSupabase(authData.session);
@@ -1552,7 +1472,7 @@ async function profilePage(section = "overview") {
             ${accountCard("Addresses", "Add, edit, or delete delivery addresses", "#/profile/addresses", "Manage")}
             ${accountCard("Payment Methods", "Cash on Delivery active. Online payments ready later.", "#/profile/payments", "Payment")}
             ${accountCard("Notifications", "Email and drop alert preferences", "#/profile/notifications", "Alerts")}
-            ${accountCard("Security", "Change password and logout from all devices", "#/profile/security", "Protect")}
+            ${accountCard("Security", "OTP-only account protection and logout controls", "#/profile/security", "Protect")}
             ${accountCard("Help & Support", "FAQ, contact support, returns, and refunds", "#/profile/help", "Support")}
             ${accountCard("About Urban Kicks", "Brand story, terms, and privacy", "#/about", "Brand")}
             ${accountCard("Logout", "Securely end this session", "javascript:logout()", "Exit")}
@@ -1614,16 +1534,16 @@ function profileSecurityPage(account) {
           <div>
             <p class="eyebrow">Security</p>
             <h1>Account protection</h1>
-            <p>Change password, keep sessions fresh, and logout securely.</p>
+            <p>Urban Kicks uses email OTP only. Manage sessions and logout securely.</p>
           </div>
         </div>
       </div>
       <div class="security-grid">
-        <form class="panel profile-edit-form" id="passwordForm">
-          <h2>Change password</h2>
-          <label>New Password<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
-          <button class="button primary" type="submit"><span class="button-label">Update Password</span><span class="button-spinner" aria-hidden="true"></span></button>
-        </form>
+        <article class="panel security-card">
+          <h2>Email OTP only</h2>
+          <p class="meta">Login, signup, and recovery all use a manual 6-digit email OTP. No clickable auth links are used inside the app.</p>
+          <a class="button primary" href="#/auth">Send OTP</a>
+        </article>
         <article class="panel security-card">
           <h2>Logout from all devices</h2>
           <p class="meta">End every active Supabase session for this account.</p>
@@ -1632,7 +1552,6 @@ function profileSecurityPage(account) {
       </div>
     </section>
   `;
-  document.getElementById("passwordForm").addEventListener("submit", changePassword);
 }
 
 function profileSectionPage(account, section) {
@@ -1736,30 +1655,6 @@ async function saveProfile(event) {
     location.hash = "#/profile";
   } catch (error) {
     showAuthError(error, error.message || "Could not update profile.");
-  } finally {
-    setButtonLoading(button, false);
-  }
-}
-
-async function changePassword(event) {
-  event.preventDefault();
-  const form = event.target;
-  const button = form.querySelector("button[type='submit']");
-  const password = String(new FormData(form).get("password") || "");
-  if (password.length < 6) return notify("Password must be at least 6 characters.", "error");
-
-  setButtonLoading(button, true, "Updating...");
-  try {
-    const client = await getSupabaseClient();
-    const { error } = await client.auth.updateUser({ password });
-    if (error) {
-      console.error(error);
-      throw new Error(authErrorMessage(error, error.message || "Could not update password."));
-    }
-    form.reset();
-    notify("Password updated securely.", "success");
-  } catch (error) {
-    showAuthError(error, error.message || "Could not update password.");
   } finally {
     setButtonLoading(button, false);
   }

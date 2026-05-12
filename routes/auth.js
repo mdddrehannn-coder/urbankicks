@@ -38,84 +38,17 @@ function legacyProfilePayload(user, body = {}) {
 }
 
 async function signupHandler(req, res) {
-  try {
-    if (!req.body.email || !req.body.password) {
-      return res.status(400).json({ message: "Email and password are required" });
-    }
-
-    console.log(`[auth] signup attempt for ${req.body.email}`);
-    const result = await request("/auth/v1/signup", {
-      method: "POST",
-      body: {
-        email: req.body.email,
-        password: req.body.password,
-        data: {
-          name: req.body.name || req.body.full_name,
-          full_name: req.body.full_name || req.body.name,
-          mobile: req.body.mobile || req.body.phone_number,
-          phone_number: req.body.phone_number || req.body.mobile
-        }
-      }
-    });
-
-    if (result.user && result.access_token) {
-      await request("/rest/v1/users", {
-        method: "POST",
-        headers: { ...preferReturn(), Prefer: "resolution=merge-duplicates,return=representation" },
-        token: result.access_token,
-        body: profilePayload(result.user, req.body)
-      }).catch((profileError) => {
-        console.error(profileError);
-        console.warn("[auth] profile upsert skipped:", profileError.message);
-      });
-    }
-
-    console.log(`[auth] signup accepted for ${req.body.email}`);
-    res.status(201).json(result);
-  } catch (error) {
-    console.error(error);
-    console.error("[auth] signup failed:", error.message);
-    res.status(400).json({ message: error.message, error: error.message });
-  }
+  res.status(410).json({
+    message: "Password signup is disabled. Urban Kicks uses browser Supabase Email OTP only."
+  });
 }
 
 router.post("/signup", signupHandler);
 
 router.post("/login", async (req, res) => {
-  try {
-    const email = req.body.email || req.body.identifier;
-    if (!email || !req.body.password) {
-      return res.status(400).json({ message: "Email and password are required" });
-    }
-
-    console.log(`[auth] login attempt for ${email}`);
-    const result = await request("/auth/v1/token?grant_type=password", {
-      method: "POST",
-      body: {
-        email,
-        password: req.body.password
-      }
-    });
-
-    if (result.user && result.access_token) {
-      await request("/rest/v1/users", {
-        method: "POST",
-        headers: { ...preferReturn(), Prefer: "resolution=merge-duplicates,return=representation" },
-        token: result.access_token,
-        body: profilePayload(result.user, req.body)
-      }).catch((profileError) => {
-        console.error(profileError);
-        console.warn("[auth] profile sync skipped:", profileError.message);
-      });
-    }
-
-    console.log(`[auth] login success for ${email}`);
-    res.json(result);
-  } catch (error) {
-    console.error(error);
-    console.error("[auth] login failed:", error.message);
-    res.status(401).json({ message: error.message, error: error.message });
-  }
+  res.status(410).json({
+    message: "Password login is disabled. Urban Kicks uses browser Supabase Email OTP only."
+  });
 });
 
 router.post("/refresh", async (req, res) => {
