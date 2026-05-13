@@ -60,11 +60,11 @@ Open `http://localhost:5000`.
 - `POST /api/auth/refresh` refreshes persistent sessions.
 - `GET /api/auth/status` checks auth wiring.
 - `GET /api/auth/me` reads the current Supabase user.
-- Frontend auth uses manual 6-digit Email OTP with the official browser Supabase client methods:
-  - `supabase.auth.signInWithOtp()`
-    - signup uses `shouldCreateUser: true`
-    - login/recovery uses `shouldCreateUser: false`
-  - `supabase.auth.verifyOtp()`
+- Frontend auth uses the official browser Supabase client methods:
+  - `supabase.auth.signUp()` for account creation and signup OTP
+  - `supabase.auth.signInWithPassword()` for normal login
+  - `supabase.auth.resetPasswordForEmail()` for recovery OTP
+  - `supabase.auth.verifyOtp()` for manual signup/recovery code verification
   - `supabase.auth.signOut()`
   - `supabase.auth.getSession()`
   - `supabase.auth.onAuthStateChange()`
