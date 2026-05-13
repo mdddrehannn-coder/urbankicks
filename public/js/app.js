@@ -18,6 +18,7 @@ const EMAIL_AUTH_COOLDOWN_SECONDS = 60;
 
 let catalogCache = null;
 let wishlistCache = null;
+let addressCache = null;
 let authRefreshTimer = null;
 let supabaseClient = null;
 let supabaseClientPromise = null;
@@ -30,6 +31,7 @@ let emailAuthState = {
   timer: null,
   inFlight: false
 };
+let checkoutSelectedAddressId = "";
 
 const categorySeed = [
   { slug: "speed-runners", title: "Speed Runners", copy: "Responsive shoes for fast city movement.", accent: "pink" },
@@ -448,6 +450,18 @@ async function getWishlist() {
     wishlistCache = localWishlist();
   }
   return wishlistCache;
+}
+
+async function getAddresses(force = false) {
+  if (!getSession()) return [];
+  if (addressCache && !force) return addressCache;
+  try {
+    addressCache = await api("/api/addresses");
+  } catch (error) {
+    notify(errorToMessage(error, "Could not load saved addresses. Run the Supabase addresses SQL if this is the first setup."), "error");
+    addressCache = [];
+  }
+  return addressCache;
 }
 
 async function renderCounters() {
@@ -900,21 +914,28 @@ function removeItem(index) {
   cartPage();
 }
 
-function checkoutPage() {
+async function checkoutPage() {
   const cart = getCart();
   if (!cart.length) return cartPage();
   const totals = cartTotals(cart);
+  const addresses = await getAddresses();
+  const selectedAddress = addresses.find((address) => address.id === checkoutSelectedAddressId)
+    || addresses.find((address) => address.isDefault)
+    || addresses[0];
+  checkoutSelectedAddressId = selectedAddress?.id || "";
   app.innerHTML = `
     <section class="checkout-layout">
       <div class="panel">
         <p class="eyebrow">Checkout</p>
         <h1>Delivery details</h1>
+        ${checkoutAddressSelector(addresses, selectedAddress)}
         <form class="form" id="checkoutForm">
-          <label>Full name<input name="name" required value="${safe(getUser()?.user_metadata?.name || "")}" placeholder="Your name"></label>
+          <input type="hidden" name="address_id" value="${safe(selectedAddress?.id || "")}">
+          <label>Full name<input name="name" required value="${safe(selectedAddress?.fullName || getUser()?.user_metadata?.name || "")}" placeholder="Your name"></label>
           <label>Email<input name="email" type="email" required value="${safe(getUser()?.email || "")}" placeholder="you@example.com"></label>
-          <label>Mobile number<input name="phone" required placeholder="+91 90000 00000"></label>
-          <label>City<input name="city" required placeholder="Bengaluru"></label>
-          <label>Address<textarea name="address" rows="4" required placeholder="House, street, area"></textarea></label>
+          <label>Mobile number<input name="phone" required value="${safe(selectedAddress?.phone || "")}" placeholder="+91 90000 00000"></label>
+          <label>City<input name="city" required value="${safe(selectedAddress?.city || "")}" placeholder="Bengaluru"></label>
+          <label>Address<textarea name="address" rows="4" required placeholder="House, street, area">${safe(formatAddress(selectedAddress))}</textarea></label>
           <label>Payment method<input value="Cash on Delivery" disabled></label>
           <button class="button primary" type="submit">Place order</button>
         </form>
@@ -923,6 +944,33 @@ function checkoutPage() {
     </section>
   `;
   document.getElementById("checkoutForm").addEventListener("submit", placeOrder);
+}
+
+function checkoutAddressSelector(addresses, selectedAddress) {
+  if (!getSession()) return "";
+  return `
+    <section class="checkout-address-panel">
+      <div class="address-panel-head">
+        <div><strong>Deliver to</strong><p>${selectedAddress ? "Default address selected first." : "Add an address for faster checkout."}</p></div>
+        <a class="text-button" href="#/profile/addresses/new">Add new</a>
+      </div>
+      <div class="checkout-address-list">
+        ${addresses.map((address) => `
+          <button class="checkout-address-option ${address.id === selectedAddress?.id ? "active" : ""}" type="button" onclick="selectCheckoutAddress('${address.id}')">
+            <span>${safe(address.addressType)}${address.isDefault ? " / Default" : ""}</span>
+            <strong>${safe(address.fullName)}</strong>
+            <small>${safe(formatAddress(address))}</small>
+            <em>Deliver here</em>
+          </button>
+        `).join("") || '<div class="premium-empty compact"><h3>No saved address</h3><p>Add an address from My Account to use quick checkout.</p></div>'}
+      </div>
+    </section>
+  `;
+}
+
+function selectCheckoutAddress(id) {
+  checkoutSelectedAddressId = id;
+  checkoutPage();
 }
 
 async function placeOrder(event) {
@@ -1495,6 +1543,7 @@ async function logout() {
   localStorage.removeItem(SESSION_KEY);
   if (authRefreshTimer) clearTimeout(authRefreshTimer);
   wishlistCache = null;
+  addressCache = null;
   renderCounters();
   window.dispatchEvent(new CustomEvent("urban-kicks-auth", { detail: { event: "SIGNED_OUT", session: null } }));
   notify("You have been logged out.", "success");
@@ -1576,12 +1625,115 @@ function accountCard(title, copy, href, action = "Open") {
   `;
 }
 
-async function profilePage(section = "overview") {
+function formatAddress(address) {
+  if (!address) return "";
+  return [address.houseNo, address.area, address.landmark, address.city, address.state, address.pincode]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function addressCard(address) {
+  return `
+    <article class="address-card ${address.isDefault ? "default" : ""}">
+      <div class="address-card-top">
+        <span>${safe(address.addressType)}</span>
+        ${address.isDefault ? "<strong>Default</strong>" : ""}
+      </div>
+      <h3>${safe(address.fullName)}</h3>
+      <p>${safe(address.phone)}</p>
+      <p>${safe(formatAddress(address))}</p>
+      <div class="address-actions">
+        <a class="button light" href="#/profile/addresses/edit/${address.id}">Edit</a>
+        <button class="button light" onclick="setDefaultAddress('${address.id}')" ${address.isDefault ? "disabled" : ""}>Set default</button>
+        <button class="button danger" onclick="deleteAddress('${address.id}')">Delete</button>
+      </div>
+    </article>
+  `;
+}
+
+async function addressListPage(account) {
+  const addresses = await getAddresses(true);
+  app.innerHTML = `
+    <section class="profile-shell narrow address-shell">
+      <div class="edit-profile-topbar">
+        <a class="edit-back-button" href="#/profile" aria-label="Back to account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
+        </a>
+        <h1>Addresses</h1>
+        <a class="text-button" href="#/profile/addresses/new">Add</a>
+      </div>
+      <div class="address-hero">
+        <div>
+          <p class="eyebrow">Delivery book</p>
+          <h2>Saved addresses</h2>
+          <p>Choose default delivery details for faster Cash on Delivery checkout.</p>
+        </div>
+        <a class="button primary" href="#/profile/addresses/new">Add new address</a>
+      </div>
+      <div class="address-grid">${addresses.map(addressCard).join("") || '<div class="premium-empty"><h3>No addresses saved</h3><p>Add your first delivery address to speed up checkout.</p><a class="button primary" href="#/profile/addresses/new">Add address</a></div>'}</div>
+    </section>
+  `;
+}
+
+function addressFormPage(account, mode = "new", id = "") {
+  const existing = (addressCache || []).find((address) => address.id === id) || {};
+  const isEdit = mode === "edit";
+  app.innerHTML = `
+    <section class="profile-shell narrow address-shell">
+      <div class="edit-profile-topbar">
+        <a class="edit-back-button" href="#/profile/addresses" aria-label="Back to addresses">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
+        </a>
+        <h1>${isEdit ? "Edit Address" : "Add Address"}</h1>
+        <button class="text-button" type="reset" form="addressForm">Reset</button>
+      </div>
+      <form class="address-form" id="addressForm" data-address-id="${safe(existing.id || "")}">
+        ${addressFormSection("Contact Info", `
+          ${addressField("Full Name", "fullName", existing.fullName || account.profile.name, "text", true)}
+          ${addressField("Phone Number", "phone", existing.phone || account.profile.mobile, "tel", true)}
+          ${addressField("Alternate Phone", "alternatePhone", existing.alternatePhone || "", "tel", false)}
+        `)}
+        ${addressFormSection("Address Info", `
+          ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
+          ${addressField("City", "city", existing.city || "", "text", true)}
+          ${addressField("State", "state", existing.state || "", "text", true)}
+          ${addressField("Locality / Area / Street", "area", existing.area || "", "text", true)}
+          ${addressField("Flat / House / Building", "houseNo", existing.houseNo || "", "text", true)}
+          ${addressField("Landmark (optional)", "landmark", existing.landmark || "", "text", false)}
+        `)}
+        <section class="address-form-section">
+          <h2>Address Type</h2>
+          <div class="address-type-group">
+            ${["Home", "Office", "Other"].map((type) => `<label><input type="radio" name="addressType" value="${type}" ${(existing.addressType || "Home") === type ? "checked" : ""}>${type}</label>`).join("")}
+          </div>
+        </section>
+        <label class="default-toggle"><input type="checkbox" name="isDefault" ${existing.isDefault ? "checked" : ""}><span>Make as default address</span></label>
+        <div class="sticky-save-bar"><button class="button primary" type="submit"><span class="button-label">Save Address</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+      </form>
+    </section>
+  `;
+  setupAddressForm();
+}
+
+function addressFormSection(title, fields) {
+  return `<section class="address-form-section"><h2>${safe(title)}</h2><div class="address-form-grid">${fields}</div></section>`;
+}
+
+function addressField(label, name, value = "", type = "text", required = false, inputmode = "") {
+  return `<label class="modern-field">${safe(label)}<input name="${name}" type="${type}" value="${safe(value)}" ${required ? "required" : ""} ${inputmode ? `inputmode="${inputmode}"` : ""}></label>`;
+}
+
+async function profilePage(section = "overview", action = "", id = "") {
   const session = getSession();
   if (!session) return authPage();
   const account = await getAccountData();
   if (section === "edit") return profileEditPage(account);
   if (section === "security") return profileSecurityPage(account);
+  if (section === "addresses" && (action === "new" || action === "edit")) {
+    if (action === "edit" && !addressCache) await getAddresses(true);
+    return addressFormPage(account, action, id);
+  }
+  if (section === "addresses") return addressListPage(account);
   if (section !== "overview") return profileSectionPage(account, section);
   const cartItems = getCart();
   const delivered = account.orders.filter((order) => order.status === "Delivered").length;
@@ -1844,6 +1996,108 @@ function setupProfileEditForm() {
   });
 
   form.addEventListener("submit", saveProfile);
+}
+
+function setupAddressForm() {
+  const form = document.getElementById("addressForm");
+  form?.addEventListener("submit", saveAddress);
+  form?.elements.pincode?.addEventListener("input", () => autofillCityState(form));
+}
+
+function autofillCityState(form) {
+  const pin = String(form.elements.pincode.value || "").replace(/\D/g, "").slice(0, 6);
+  form.elements.pincode.value = pin;
+  const known = {
+    "800007": ["Patna", "Bihar"],
+    "800001": ["Patna", "Bihar"],
+    "110001": ["New Delhi", "Delhi"],
+    "400001": ["Mumbai", "Maharashtra"],
+    "560001": ["Bengaluru", "Karnataka"],
+    "700001": ["Kolkata", "West Bengal"]
+  };
+  if (known[pin]) {
+    form.elements.city.value = known[pin][0];
+    form.elements.state.value = known[pin][1];
+  }
+}
+
+function getAddressFormPayload(form) {
+  const data = Object.fromEntries(new FormData(form));
+  const phone = normalizePhoneNumber(data.phone);
+  const alternatePhone = data.alternatePhone ? normalizePhoneNumber(data.alternatePhone) : "";
+  const pincode = String(data.pincode || "").replace(/\D/g, "");
+  if (!String(data.fullName || "").trim()) throw new Error("Full name is required.");
+  if (!phone) throw new Error("Enter a valid phone number.");
+  if (alternatePhone === "" && data.alternatePhone) throw new Error("Enter a valid alternate phone number.");
+  if (!/^\d{6}$/.test(pincode)) throw new Error("Enter a valid 6-digit pincode.");
+  ["city", "state", "area", "houseNo"].forEach((field) => {
+    if (!String(data[field] || "").trim()) throw new Error(`${field === "houseNo" ? "Flat / House / Building" : field} is required.`);
+  });
+  return {
+    fullName: String(data.fullName).trim(),
+    phone,
+    alternatePhone,
+    pincode,
+    city: String(data.city).trim(),
+    state: String(data.state).trim(),
+    area: String(data.area).trim(),
+    houseNo: String(data.houseNo).trim(),
+    landmark: String(data.landmark || "").trim(),
+    addressType: String(data.addressType || "Home"),
+    isDefault: Boolean(data.isDefault)
+  };
+}
+
+async function saveAddress(event) {
+  event.preventDefault();
+  const form = event.target;
+  const button = form.querySelector("button[type='submit']");
+  let payload;
+  try {
+    payload = getAddressFormPayload(form);
+  } catch (error) {
+    notify(error.message, "error");
+    return;
+  }
+
+  setButtonLoading(button, true, "Saving...");
+  try {
+    const id = form.dataset.addressId;
+    await api(id ? `/api/addresses/${id}` : "/api/addresses", {
+      method: id ? "PATCH" : "POST",
+      body: JSON.stringify(payload)
+    });
+    addressCache = null;
+    notify("Address saved successfully.", "success");
+    location.hash = "#/profile/addresses";
+  } catch (error) {
+    showAuthError(error, error.message || "Could not save address.");
+  } finally {
+    setButtonLoading(button, false);
+  }
+}
+
+async function setDefaultAddress(id) {
+  try {
+    await api(`/api/addresses/${id}/default`, { method: "PATCH" });
+    addressCache = null;
+    notify("Default address updated.", "success");
+    profilePage("addresses");
+  } catch (error) {
+    showAuthError(error, error.message || "Could not set default address.");
+  }
+}
+
+async function deleteAddress(id) {
+  if (!confirm("Delete this address?")) return;
+  try {
+    await api(`/api/addresses/${id}`, { method: "DELETE" });
+    addressCache = null;
+    notify("Address deleted.", "success");
+    profilePage("addresses");
+  } catch (error) {
+    showAuthError(error, error.message || "Could not delete address.");
+  }
 }
 
 async function saveProfile(event) {
@@ -2181,7 +2435,7 @@ async function router() {
     if (parts[0] === "confirmation") return confirmationPage(parts[1]);
     if (parts[0] === "wishlist") return wishlistPage();
     if (parts[0] === "auth") return authPage(parts[1] || "login");
-    if (parts[0] === "profile") return profilePage(parts[1] || "overview");
+    if (parts[0] === "profile") return profilePage(parts[1] || "overview", parts[2] || "", parts[3] || "");
     if (parts[0] === "settings") return settingsPage();
     if (parts[0] === "admin") return adminPage();
     if (["about", "terms", "privacy"].includes(parts[0])) return infoPage(parts[0].replace(/^\w/, (c) => c.toUpperCase()));
@@ -2207,6 +2461,9 @@ window.editProduct = editProduct;
 window.resetAdminForm = resetAdminForm;
 window.deleteProduct = deleteProduct;
 window.updateOrderStatus = updateOrderStatus;
+window.setDefaultAddress = setDefaultAddress;
+window.deleteAddress = deleteAddress;
+window.selectCheckoutAddress = selectCheckoutAddress;
 
 navToggle?.addEventListener("click", () => document.querySelector(".nav-links")?.classList.toggle("open"));
 window.addEventListener("hashchange", router);

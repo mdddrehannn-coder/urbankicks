@@ -9,6 +9,7 @@ const orderRoutes = require("./routes/orders");
 const authRoutes = require("./routes/auth");
 const wishlistRoutes = require("./routes/wishlist");
 const transactionRoutes = require("./routes/transactions");
+const addressRoutes = require("./routes/addresses");
 const { supabaseUrl, supabaseAnonKey } = require("./lib/supabase");
 
 const app = express();
@@ -24,6 +25,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/addresses", addressRoutes);
 
 app.get("/api/config/supabase", (_req, res) => {
   try {

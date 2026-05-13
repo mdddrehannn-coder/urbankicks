@@ -4495,3 +4495,313 @@ body.light-mode .appearance-panel p {
     height: 58px;
   }
 }
+
+/* Address management system */
+.address-shell {
+  animation: accountFadeIn 260ms ease both;
+}
+
+.address-hero,
+.address-card,
+.address-form-section,
+.checkout-address-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(227, 6, 19, 0.13), transparent 18rem),
+    rgba(255, 255, 255, 0.07);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(16px);
+}
+
+.address-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: clamp(16px, 4vw, 22px);
+  margin-bottom: 14px;
+}
+
+.address-hero h2,
+.address-form-section h2 {
+  margin: 4px 0 6px;
+  color: #ffffff;
+  font-size: clamp(1.2rem, 3vw, 1.7rem);
+}
+
+.address-hero p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.address-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.address-card {
+  padding: 16px;
+  transition: transform 170ms ease, border-color 170ms ease, background 170ms ease;
+}
+
+.address-card.default {
+  border-color: rgba(227, 6, 19, 0.45);
+}
+
+.address-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(227, 6, 19, 0.32);
+}
+
+.address-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.address-card-top span,
+.address-card-top strong {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.address-card-top strong {
+  background: rgba(227, 6, 19, 0.18);
+  color: #ff5660;
+}
+
+.address-card h3 {
+  margin: 0 0 6px;
+  color: #ffffff;
+  font-size: 1.05rem;
+}
+
+.address-card p {
+  margin: 4px 0;
+  color: rgba(255, 255, 255, 0.66);
+  line-height: 1.5;
+}
+
+.address-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.address-actions .button {
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 0.72rem;
+}
+
+.address-form {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 82px;
+}
+
+.address-form-section {
+  padding: clamp(16px, 4vw, 22px);
+}
+
+.address-form-section h2 {
+  margin: 0 0 14px;
+}
+
+.address-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.address-type-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.address-type-group label {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.74);
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.address-type-group input {
+  display: none;
+}
+
+.address-type-group label:has(input:checked) {
+  background: #e30613;
+  border-color: #e30613;
+  color: #ffffff;
+}
+
+.default-toggle {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.default-toggle input {
+  width: 20px;
+  height: 20px;
+  accent-color: #e30613;
+}
+
+.sticky-save-bar {
+  position: sticky;
+  bottom: 82px;
+  z-index: 18;
+  display: grid;
+  padding: 10px 0;
+  background: linear-gradient(180deg, transparent, rgba(5, 5, 6, 0.92) 34%);
+}
+
+.sticky-save-bar .button {
+  min-height: 52px;
+}
+
+.checkout-address-panel {
+  margin: 16px 0;
+  padding: 14px;
+}
+
+.address-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.address-panel-head strong {
+  color: #ffffff;
+}
+
+.address-panel-head p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.82rem;
+}
+
+.checkout-address-list {
+  display: grid;
+  gap: 9px;
+}
+
+.checkout-address-option {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.74);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 170ms ease, border-color 170ms ease, background 170ms ease;
+}
+
+.checkout-address-option.active,
+.checkout-address-option:hover {
+  transform: translateY(-1px);
+  border-color: rgba(227, 6, 19, 0.42);
+  background: rgba(227, 6, 19, 0.12);
+}
+
+.checkout-address-option span,
+.checkout-address-option em {
+  color: #ff5660;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.checkout-address-option strong {
+  color: #ffffff;
+}
+
+.checkout-address-option small {
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.45;
+}
+
+body.light-mode .address-hero,
+body.light-mode .address-card,
+body.light-mode .address-form-section,
+body.light-mode .checkout-address-panel,
+body.light-mode .default-toggle {
+  border-color: rgba(12, 13, 16, 0.08);
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(12, 13, 16, 0.08);
+}
+
+body.light-mode .address-hero h2,
+body.light-mode .address-form-section h2,
+body.light-mode .address-card h3,
+body.light-mode .address-panel-head strong,
+body.light-mode .checkout-address-option strong,
+body.light-mode .default-toggle {
+  color: #08090b;
+}
+
+body.light-mode .address-hero p,
+body.light-mode .address-card p,
+body.light-mode .address-panel-head p,
+body.light-mode .checkout-address-option small {
+  color: #687181;
+}
+
+body.light-mode .address-card-top span,
+body.light-mode .address-type-group label,
+body.light-mode .checkout-address-option {
+  border-color: rgba(12, 13, 16, 0.08);
+  background: #f5f6f8;
+  color: #596272;
+}
+
+body.light-mode .sticky-save-bar {
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.96) 34%);
+}
+
+@media (max-width: 720px) {
+  .address-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .address-hero .button {
+    width: 100%;
+  }
+
+  .address-form-grid,
+  .address-type-group {
+    grid-template-columns: 1fr;
+  }
+
+  .sticky-save-bar {
+    bottom: 82px;
+  }
+}
