@@ -1520,6 +1520,14 @@ function avatarMarkup(profile, size = "large") {
   return `<div class="profile-avatar ${size}" aria-label="${safe(profile.name)}">${safe(initials)}</div>`;
 }
 
+function splitProfileName(name = "") {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.slice(1).join(" ")
+  };
+}
+
 function accountIcon(title) {
   const paths = {
     Orders: "M5 6.5h14v12H5v-12Zm2 2v8h10v-8H7Zm2-5h6v2H9v-2Z",
@@ -1646,31 +1654,88 @@ async function profilePage(section = "overview") {
 }
 
 function profileEditPage(account) {
+  const metadata = account.session.user?.user_metadata || {};
+  const splitName = splitProfileName(account.profile.name);
+  const firstName = metadata.first_name || splitName.firstName;
+  const lastName = metadata.last_name || splitName.lastName;
+  const username = metadata.username || metadata.screen_name || "";
+  const gender = metadata.gender || "";
+  const dateOfBirth = metadata.date_of_birth || metadata.dob || "";
   app.innerHTML = `
-    <section class="profile-shell narrow">
-      <a class="text-button back-link" href="#/profile">Back to account</a>
-      <div class="profile-hero-card">
-        <div class="profile-identity">
-          ${avatarMarkup(account.profile)}
-          <div>
-            <p class="eyebrow">Edit Profile</p>
-            <h1>Refine your account</h1>
-            <p>Update your personal details and profile picture.</p>
-          </div>
+    <section class="profile-shell narrow edit-profile-shell">
+      <div class="edit-profile-topbar">
+        <a class="edit-back-button" href="#/profile" aria-label="Back to account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
+        </a>
+        <h1>Edit Profile</h1>
+        <span aria-hidden="true"></span>
+      </div>
+
+      <div class="edit-profile-preview">
+        <div id="profilePreview" class="profile-preview">${avatarMarkup(account.profile, "medium")}</div>
+        <div class="edit-preview-copy">
+          <h2>${safe(account.profile.name)}</h2>
+          <p>Manage your personal information</p>
+          <button class="text-button change-photo-button" type="button" id="changePhotoButton">Change Photo</button>
         </div>
       </div>
-      <form class="panel profile-edit-form" id="profileEditForm">
-        <label>Full Name<input name="name" required value="${safe(account.profile.name)}"></label>
-        <label>Email<input name="email" type="email" required value="${safe(account.profile.email)}"></label>
-        <label>Phone Number<input name="mobile" type="tel" inputmode="tel" value="${safe(account.profile.mobile)}" placeholder="+91 90000 00000"></label>
-        <label>Profile Picture<input name="profileImageFile" type="file" accept="image/*"></label>
+
+      <form class="panel profile-edit-form modern-profile-form" id="profileEditForm">
+        <div class="form-section-title">
+          <p class="eyebrow">Personal details</p>
+          <h2>Account information</h2>
+        </div>
+
+        <div class="profile-form-grid">
+          <label class="modern-field">First Name<input name="first_name" value="${safe(firstName)}" autocomplete="given-name" placeholder="First name"></label>
+          <label class="modern-field">Last Name<input name="last_name" value="${safe(lastName)}" autocomplete="family-name" placeholder="Last name"></label>
+          <label class="modern-field full">Full Name<input name="name" required value="${safe(account.profile.name)}" autocomplete="name" placeholder="Your full name"></label>
+          <label class="modern-field">Username / Screen Name<input name="username" value="${safe(username)}" autocomplete="nickname" placeholder="urbankicks_user"></label>
+          <label class="modern-field">Email<input name="email" type="email" required value="${safe(account.profile.email)}" autocomplete="email" placeholder="you@example.com"></label>
+          <label class="modern-field">Phone Number<input name="mobile" type="tel" inputmode="tel" value="${safe(account.profile.mobile)}" autocomplete="tel" placeholder="+91 90000 00000"></label>
+          <label class="modern-field">Gender
+            <select name="gender">
+              <option value="">Prefer not to say</option>
+              ${["Female", "Male", "Non-binary", "Other"].map((option) => `<option value="${option}" ${gender === option ? "selected" : ""}>${option}</option>`).join("")}
+            </select>
+          </label>
+          <label class="modern-field">Date of Birth<input name="date_of_birth" type="date" value="${safe(dateOfBirth)}" autocomplete="bday"></label>
+          <label class="modern-field full file-field">Profile Photo Upload<input name="profileImageFile" type="file" accept="image/*"></label>
+        </div>
+
         <input type="hidden" name="profile_image" value="${safe(account.profile.image)}">
-        <div id="profilePreview" class="profile-preview">${avatarMarkup(account.profile, "medium")}</div>
-        <button class="button primary" type="submit"><span class="button-label">Save Changes</span><span class="button-spinner" aria-hidden="true"></span></button>
+        <div class="profile-form-actions">
+          <button class="button primary" type="submit"><span class="button-label">Update Profile</span><span class="button-spinner" aria-hidden="true"></span></button>
+          <button class="button light" type="reset">Reset</button>
+        </div>
       </form>
+
+      <section class="appearance-panel">
+        <div>
+          <p class="eyebrow">Appearance</p>
+          <h2>Theme</h2>
+          <p>Switch between Urban Kicks dark luxury and clean ecommerce light mode.</p>
+        </div>
+        <div class="theme-card-grid" role="group" aria-label="Theme selector">
+          ${themeCardMarkup("dark", "Black + Red", "Dark sneaker/streetwear luxury")}
+          ${themeCardMarkup("light", "White + Black", "Clean minimal shopping app")}
+        </div>
+      </section>
     </section>
   `;
   setupProfileEditForm();
+  updateThemeCards();
+}
+
+function themeCardMarkup(theme, title, copy) {
+  const isDark = theme === "dark";
+  return `
+    <button class="theme-card ${isDark ? "theme-card-dark" : "theme-card-light"}" type="button" data-theme-choice="${theme}" onclick="setTheme('${theme}')">
+      <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+      <strong>${safe(title)}</strong>
+      <small>${safe(copy)}</small>
+    </button>
+  `;
 }
 
 function profileSecurityPage(account) {
@@ -1749,6 +1814,11 @@ function setupProfileEditForm() {
   const fileInput = form.elements.profileImageFile;
   const hiddenImage = form.elements.profile_image;
   const preview = document.getElementById("profilePreview");
+  const changePhotoButton = document.getElementById("changePhotoButton");
+  const initialPreview = preview.innerHTML;
+  const initialImage = hiddenImage.value;
+
+  changePhotoButton?.addEventListener("click", () => fileInput.click());
 
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0];
@@ -1766,6 +1836,13 @@ function setupProfileEditForm() {
     reader.readAsDataURL(file);
   });
 
+  form.addEventListener("reset", () => {
+    window.setTimeout(() => {
+      hiddenImage.value = initialImage;
+      preview.innerHTML = initialPreview;
+    }, 0);
+  });
+
   form.addEventListener("submit", saveProfile);
 }
 
@@ -1774,9 +1851,14 @@ async function saveProfile(event) {
   const form = event.target;
   const button = form.querySelector("button[type='submit']");
   const data = Object.fromEntries(new FormData(form));
+  const firstName = String(data.first_name || "").trim();
+  const lastName = String(data.last_name || "").trim();
   const name = String(data.name || "").trim();
+  const username = String(data.username || "").trim();
   const email = String(data.email || "").trim();
   const mobile = data.mobile ? normalizePhoneNumber(data.mobile) : "";
+  const gender = String(data.gender || "").trim();
+  const dateOfBirth = String(data.date_of_birth || "").trim();
   const profileImage = String(data.profile_image || "");
 
   if (!name) return notify("Enter your full name.", "error");
@@ -1790,8 +1872,14 @@ async function saveProfile(event) {
       data: {
         name,
         full_name: name,
+        first_name: firstName,
+        last_name: lastName,
+        username,
+        screen_name: username,
         mobile,
         phone_number: mobile,
+        gender,
+        date_of_birth: dateOfBirth,
         profile_image: profileImage
       }
     };
@@ -1861,15 +1949,35 @@ async function logoutAllDevices() {
 
 function settingsPage() {
   app.innerHTML = `
-    <section class="section">
-      ${sectionHead("Settings", "Store controls", "Manage your shopping preferences and checkout options.")}
-      <div class="schema-grid">
-        <article class="mini-card"><h3>Theme</h3><p class="meta">Toggle dark/light styling.</p><button class="button primary" onclick="toggleTheme()">Toggle theme</button></article>
-        <article class="mini-card"><h3>Payment</h3><p class="meta">Cash on Delivery only.</p></article>
-        <article class="mini-card"><h3>Account data</h3><p class="meta">Saved products, orders, and profile details.</p></article>
+    <section class="profile-shell narrow settings-shell">
+      <div class="edit-profile-topbar">
+        <a class="edit-back-button" href="#/profile" aria-label="Back to account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
+        </a>
+        <h1>Settings</h1>
+        <span aria-hidden="true"></span>
+      </div>
+
+      <section class="appearance-panel">
+        <div>
+          <p class="eyebrow">Appearance</p>
+          <h2>Theme</h2>
+          <p>Choose the Urban Kicks experience that matches your shopping style. Your preference stays saved after refresh.</p>
+        </div>
+        <div class="theme-card-grid" role="group" aria-label="Theme selector">
+          ${themeCardMarkup("dark", "Black + Red", "Dark luxury sneaker mode")}
+          ${themeCardMarkup("light", "White + Black", "Minimal ecommerce mode")}
+        </div>
+      </section>
+
+      <div class="settings-list">
+        <article class="settings-row"><span>${accountIcon("Payment Methods")}</span><div><h3>Payment</h3><p>Cash on Delivery active. UPI and cards can be connected later.</p></div></article>
+        <article class="settings-row"><span>${accountIcon("Security")}</span><div><h3>Account data</h3><p>Saved profile, wishlist, cart, orders, and secure session details.</p></div></article>
+        <article class="settings-row"><span>${accountIcon("Notifications")}</span><div><h3>Notifications</h3><p>Email alerts, drop reminders, and account updates are ready for production preferences.</p></div></article>
       </div>
     </section>
   `;
+  updateThemeCards();
 }
 
 async function adminPage() {
@@ -2032,9 +2140,29 @@ function swapImage(image) {
   document.getElementById("mainProductImage").src = image;
 }
 
+function getCurrentTheme() {
+  return document.body.classList.contains("light-mode") ? "light" : "dark";
+}
+
+function updateThemeCards() {
+  const currentTheme = getCurrentTheme();
+  document.querySelectorAll("[data-theme-choice]").forEach((card) => {
+    const active = card.dataset.themeChoice === currentTheme;
+    card.classList.toggle("active", active);
+    card.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function setTheme(theme) {
+  const nextTheme = theme === "light" ? "light" : "dark";
+  document.body.classList.toggle("light-mode", nextTheme === "light");
+  localStorage.setItem(THEME_KEY, nextTheme);
+  updateThemeCards();
+  notify(`${nextTheme === "light" ? "White + Black" : "Black + Red"} theme applied.`, "success");
+}
+
 function toggleTheme() {
-  document.body.classList.toggle("light-mode");
-  localStorage.setItem(THEME_KEY, document.body.classList.contains("light-mode") ? "light" : "dark");
+  setTheme(getCurrentTheme() === "light" ? "dark" : "light");
 }
 
 async function router() {
@@ -2071,6 +2199,7 @@ window.changeQty = changeQty;
 window.removeItem = removeItem;
 window.swapImage = swapImage;
 window.toggleTheme = toggleTheme;
+window.setTheme = setTheme;
 window.logout = logout;
 window.logoutAllDevices = logoutAllDevices;
 window.notify = notify;
@@ -2088,6 +2217,7 @@ window.addEventListener("urban-kicks-auth", (event) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   if (localStorage.getItem(THEME_KEY) === "light") document.body.classList.add("light-mode");
+  updateThemeCards();
   setupHeaderSearch();
   updateMobileAccountLink();
   setupAuthStateListener().catch((error) => console.error("[auth] listener setup failed", error));
