@@ -470,11 +470,23 @@ function closeNav() {
 
 function updateMobileAccountLink() {
   const link = document.getElementById("mobileAccountLink");
-  if (!link) return;
   const label = document.getElementById("mobileAccountLabel");
+  const desktopLogin = document.getElementById("desktopLoginLink");
+  const desktopProfile = document.getElementById("desktopProfileLink");
+  const desktopDot = desktopProfile?.querySelector(".desktop-account-dot");
+  const session = getSession();
+  const user = session?.user || null;
   const loggedIn = Boolean(getSession());
-  link.href = loggedIn ? "#/profile" : "#/auth";
+
+  if (link) link.href = loggedIn ? "#/profile" : "#/auth";
   if (label) label.textContent = loggedIn ? "Profile" : "Login";
+  if (desktopLogin) desktopLogin.hidden = loggedIn;
+  if (desktopProfile) desktopProfile.hidden = !loggedIn;
+  if (desktopDot && user) {
+    const metadata = user.user_metadata || {};
+    const sourceName = metadata.full_name || metadata.name || user.email || "Urban Kicks";
+    desktopDot.textContent = sourceName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "UK";
+  }
 }
 
 function updateMobileActiveNav() {
@@ -1508,6 +1520,22 @@ function avatarMarkup(profile, size = "large") {
   return `<div class="profile-avatar ${size}" aria-label="${safe(profile.name)}">${safe(initials)}</div>`;
 }
 
+function accountIcon(title) {
+  const paths = {
+    Orders: "M5 6.5h14v12H5v-12Zm2 2v8h10v-8H7Zm2-5h6v2H9v-2Z",
+    Wishlist: "M12 19.6 10.8 18.5C7 15.1 4.5 12.8 4.5 9.9A3.9 3.9 0 0 1 8.4 6c1.4 0 2.7.7 3.6 1.8A4.4 4.4 0 0 1 15.6 6a3.9 3.9 0 0 1 3.9 3.9c0 2.9-2.5 5.2-6.3 8.6L12 19.6Z",
+    Cart: "M6.5 7.2h11l-.8 9.8a2.3 2.3 0 0 1-2.3 2.1H9.6A2.3 2.3 0 0 1 7.3 17l-.8-9.8Zm2 1.8.6 7.8c0 .3.3.6.6.6h4.6c.3 0 .6-.3.6-.6l.6-7.8H8.5ZM9 6.8a3 3 0 0 1 6 0h-1.7a1.3 1.3 0 0 0-2.6 0H9Z",
+    Addresses: "M12 21s6-5.2 6-10.1A6 6 0 1 0 6 10.9C6 15.8 12 21 12 21Zm0-8.1a2 2 0 1 1 0-4.1 2 2 0 0 1 0 4.1Z",
+    "Payment Methods": "M4 6.5h16v11H4v-11Zm1.8 3H18.2V8.2H5.8v1.3Zm0 2v4.2H18.2v-4.2H5.8Z",
+    Notifications: "M12 21a2.3 2.3 0 0 0 2.2-1.7H9.8A2.3 2.3 0 0 0 12 21Zm-5.9-3.5h11.8l-1.4-1.8v-4.3a4.5 4.5 0 0 0-3.5-4.5V5a1 1 0 1 0-2 0v1.9a4.5 4.5 0 0 0-3.5 4.5v4.3l-1.4 1.8Z",
+    Security: "M12 21c4-1.7 6-4.6 6-8.7V6.5L12 4 6 6.5v5.8c0 4.1 2 7 6 8.7Zm-.7-5 4.1-4.9-1.4-1.1-2.9 3.5-1.2-1.3-1.3 1.2 2.7 2.6Z",
+    "Help & Support": "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm-.9-5.8c0-1.2.6-1.9 1.6-2.6.8-.6 1.2-.9 1.2-1.6 0-.8-.7-1.3-1.7-1.3-1 0-1.8.5-2.4 1.3L8.5 8.8A4.4 4.4 0 0 1 12.3 7c2.1 0 3.5 1.1 3.5 2.8 0 1.4-.7 2.1-1.9 2.9-.8.6-1.1.9-1.1 1.6h-1.7Zm-.1 3h2v-2h-2v2Z",
+    "About Urban Kicks": "M5 5h14v14H5V5Zm2 2v10h10V7H7Zm2 2h6v1.7H9V9Zm0 3h6v1.7H9V12Z",
+    Logout: "M5 4h8v2H7v12h6v2H5V4Zm10.3 4.3 4.2 4.2-4.2 4.2-1.3-1.4 1.8-1.8H10v-2h5.8L14 9.7l1.3-1.4Z"
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[title] || paths.Orders}"/></svg>`;
+}
+
 async function getAccountData() {
   const session = getSession();
   const [account, orders, transactions, wishlist, products] = await Promise.all([
@@ -1529,13 +1557,13 @@ async function getAccountData() {
 
 function accountCard(title, copy, href, action = "Open") {
   return `
-    <a class="account-card" href="${href}">
-      <div>
-        <span class="account-card-kicker">${safe(action)}</span>
+    <a class="account-card account-menu-row" href="${href}">
+      <span class="account-row-icon">${accountIcon(title)}</span>
+      <div class="account-row-copy">
         <h3>${safe(title)}</h3>
         <p>${safe(copy)}</p>
       </div>
-      <span class="account-arrow">&gt;</span>
+      <span class="account-arrow" aria-hidden="true">&gt;</span>
     </a>
   `;
 }
@@ -1551,45 +1579,42 @@ async function profilePage(section = "overview") {
   const delivered = account.orders.filter((order) => order.status === "Delivered").length;
   const cancelled = account.orders.filter((order) => order.status === "Cancelled").length;
   const latestOrders = account.orders.slice(0, 3);
+  const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   app.innerHTML = `
-    <section class="profile-shell">
-      <div class="profile-hero-card">
+    <section class="profile-shell account-app-shell">
+      <div class="account-topbar">
+        <h1>My Account</h1>
+        <a class="account-settings-button" href="#/settings" aria-label="Open settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8Z"/></svg>
+        </a>
+      </div>
+
+      <div class="profile-hero-card account-profile-card">
         <div class="profile-identity">
           ${avatarMarkup(account.profile)}
           <div>
-            <p class="eyebrow">Urban Kicks member</p>
             <h1>${safe(account.profile.name)}</h1>
-            <p>${safe(account.profile.email || "Email session active")}${account.profile.mobile ? ` / ${safe(account.profile.mobile)}` : ""}</p>
+            <p>${safe(account.profile.email || "Email session active")}</p>
+            ${account.profile.mobile ? `<p>${safe(account.profile.mobile)}</p>` : ""}
           </div>
         </div>
-        <div class="profile-actions">
-          <a class="button light" href="#/profile/edit">Edit Profile</a>
-          <button class="button danger" onclick="logout()">Logout</button>
-        </div>
+        <a class="account-edit-link" href="#/profile/edit">Edit</a>
       </div>
 
-      <div class="profile-stats">
+      <div class="profile-stats account-mini-stats">
         <article><strong>${account.orders.length}</strong><span>Orders</span></article>
         <article><strong>${account.wishlist.length}</strong><span>Wishlist</span></article>
-        <article><strong>${cartItems.length}</strong><span>Cart Items</span></article>
-        <article><strong>${account.transactions.length}</strong><span>Transactions</span></article>
+        <article><strong>${cartTotal}</strong><span>Bag</span></article>
+        <article><strong>${account.transactions.length}</strong><span>Payments</span></article>
       </div>
 
-      <div class="account-layout">
-        <aside class="account-side">
-          <a class="active" href="#/profile">Overview</a>
-          <a href="#/profile/orders">Orders</a>
-          <a href="#/wishlist">Wishlist</a>
-          <a href="#/cart">Cart</a>
-          <a href="#/profile/security">Security</a>
-          <a href="#/about">About Urban Kicks</a>
-        </aside>
+      <div class="account-layout account-app-layout">
         <div class="account-main">
-          <div class="account-card-grid">
+          <div class="account-card-grid account-menu-list">
             ${accountCard("Orders", `${account.orders.length} total / ${delivered} delivered / ${cancelled} cancelled`, "#/profile/orders", "Track")}
             ${accountCard("Wishlist", `${account.wishlist.length} saved sneakers`, "#/wishlist", "Saved")}
-            ${accountCard("Cart", `${cartItems.reduce((sum, item) => sum + item.quantity, 0)} items waiting`, "#/cart", "Checkout")}
+            ${accountCard("Cart", `${cartTotal} items waiting`, "#/cart", "Checkout")}
             ${accountCard("Addresses", "Add, edit, or delete delivery addresses", "#/profile/addresses", "Manage")}
             ${accountCard("Payment Methods", "Cash on Delivery active. Online payments ready later.", "#/profile/payments", "Payment")}
             ${accountCard("Notifications", "Email and drop alert preferences", "#/profile/notifications", "Alerts")}
@@ -1599,7 +1624,7 @@ async function profilePage(section = "overview") {
             ${accountCard("Logout", "Securely end this session", "javascript:logout()", "Exit")}
           </div>
 
-          <section class="account-panel">
+          <section class="account-panel account-activity-panel">
             <div class="section-head compact">
               <div>
                 <p class="eyebrow">Recent activity</p>
