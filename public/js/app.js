@@ -4,6 +4,9 @@ const wishCount = document.getElementById("wishCount");
 const navToggle = document.getElementById("navToggle");
 const toastRegion = document.getElementById("toastRegion");
 const headerSearchForm = document.getElementById("headerSearchForm");
+const mobileSearchButton = document.getElementById("mobileSearchButton");
+const mobileCartCount = document.getElementById("mobileCartCount");
+const mobileHeaderCartCount = document.getElementById("mobileHeaderCartCount");
 
 const CART_KEY = "urbanKicksCart";
 const SESSION_KEY = "urbanKicksSession";
@@ -448,10 +451,17 @@ async function getWishlist() {
 }
 
 async function renderCounters() {
-  cartCount.textContent = getCart().reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = getCart().reduce((sum, item) => sum + item.quantity, 0);
+  cartCount.textContent = cartTotal;
+  [mobileCartCount, mobileHeaderCartCount].forEach((badge) => {
+    if (!badge) return;
+    badge.textContent = cartTotal;
+    badge.hidden = cartTotal < 1;
+  });
   const wishlist = wishlistCache || localWishlist();
   wishCount.textContent = wishlist.length;
   updateMobileAccountLink();
+  updateMobileActiveNav();
 }
 
 function closeNav() {
@@ -461,9 +471,23 @@ function closeNav() {
 function updateMobileAccountLink() {
   const link = document.getElementById("mobileAccountLink");
   if (!link) return;
+  const label = document.getElementById("mobileAccountLabel");
   const loggedIn = Boolean(getSession());
   link.href = loggedIn ? "#/profile" : "#/auth";
-  link.textContent = loggedIn ? "Profile" : "Login";
+  if (label) label.textContent = loggedIn ? "Profile" : "Login";
+}
+
+function updateMobileActiveNav() {
+  const root = location.hash.replace(/^#\/?/, "").split("/")[0] || "home";
+  const activeKey = root === "cart" ? "cart"
+    : root === "categories" || root === "category" || root === "brand" ? "categories"
+      : root === "profile" || root === "auth" ? "account"
+        : root === "search" ? "new"
+          : "home";
+
+  document.querySelectorAll("[data-mobile-nav]").forEach((link) => {
+    link.classList.toggle("active", link.dataset.mobileNav === activeKey);
+  });
 }
 
 function setupHeaderSearch() {
@@ -476,6 +500,10 @@ function setupHeaderSearch() {
       return;
     }
     location.hash = `#/search/${encodeURIComponent(query)}`;
+  });
+
+  mobileSearchButton?.addEventListener("click", () => {
+    location.hash = "#/search/sneakers";
   });
 }
 
