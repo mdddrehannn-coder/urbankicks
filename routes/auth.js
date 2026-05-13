@@ -39,7 +39,7 @@ function legacyProfilePayload(user, body = {}) {
 
 async function signupHandler(req, res) {
   res.status(410).json({
-    message: "Direct API account creation is disabled. Urban Kicks uses browser Supabase Email OTP only."
+    message: "Direct API account creation is disabled. Urban Kicks uses browser Supabase signup with email OTP verification."
   });
 }
 
@@ -47,7 +47,7 @@ router.post("/signup", signupHandler);
 
 router.post("/login", async (req, res) => {
   res.status(410).json({
-    message: "Direct API login is disabled. Urban Kicks uses browser Supabase Email OTP only."
+    message: "Direct API login is disabled. Urban Kicks uses browser Supabase email and password login."
   });
 });
 

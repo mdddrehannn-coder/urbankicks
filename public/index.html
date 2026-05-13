@@ -9,8 +9,8 @@
       content="Urban Kicks India is a premium sneaker ecommerce store for curated streetwear drops, wishlist, cart, and smooth checkout."
     >
     <meta name="theme-color" content="#070707">
-    <link rel="icon" type="image/png" href="/assets/urban-kicks-logo.png">
-    <link rel="apple-touch-icon" href="/assets/urban-kicks-logo.png">
+    <link rel="icon" type="image/png" href="/assets/urban-kicks-app-icon.png">
+    <link rel="apple-touch-icon" href="/assets/urban-kicks-app-icon.png">
     <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,7 +28,11 @@
           <small>India Sneaker Store</small>
         </span>
       </a>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+      <form class="header-search" id="headerSearchForm" role="search" aria-label="Search sneakers">
+        <span class="header-search-icon" aria-hidden="true">⌕</span>
+        <input name="q" type="search" autocomplete="off" placeholder="Search sneakers">
+        <button type="submit">Search</button>
+      </form>
       <nav class="nav-links" aria-label="Main navigation">
         <a href="#/">Home</a>
         <a href="#/categories">Categories</a>
@@ -45,7 +49,7 @@
       <a href="#/">Home</a>
       <a href="#/categories">Drops</a>
       <a href="#/wishlist">Wishlist</a>
-      <a href="#/profile">Account</a>
+      <a href="#/auth" id="mobileAccountLink">Login</a>
       <a href="#/cart">Cart</a>
     </nav>
     <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>

@@ -3,6 +3,7 @@ const cartCount = document.getElementById("cartCount");
 const wishCount = document.getElementById("wishCount");
 const navToggle = document.getElementById("navToggle");
 const toastRegion = document.getElementById("toastRegion");
+const headerSearchForm = document.getElementById("headerSearchForm");
 
 const CART_KEY = "urbanKicksCart";
 const SESSION_KEY = "urbanKicksSession";
@@ -450,10 +451,32 @@ async function renderCounters() {
   cartCount.textContent = getCart().reduce((sum, item) => sum + item.quantity, 0);
   const wishlist = wishlistCache || localWishlist();
   wishCount.textContent = wishlist.length;
+  updateMobileAccountLink();
 }
 
 function closeNav() {
-  document.querySelector(".nav-links").classList.remove("open");
+  document.querySelector(".nav-links")?.classList.remove("open");
+}
+
+function updateMobileAccountLink() {
+  const link = document.getElementById("mobileAccountLink");
+  if (!link) return;
+  const loggedIn = Boolean(getSession());
+  link.href = loggedIn ? "#/profile" : "#/auth";
+  link.textContent = loggedIn ? "Profile" : "Login";
+}
+
+function setupHeaderSearch() {
+  headerSearchForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const query = String(new FormData(headerSearchForm).get("q") || "").trim();
+    if (!query) {
+      notify("Search for a sneaker, brand, or category.", "error");
+      headerSearchForm.querySelector("input")?.focus();
+      return;
+    }
+    location.hash = `#/search/${encodeURIComponent(query)}`;
+  });
 }
 
 function sectionHead(eyebrow, title, copy, action = "") {
@@ -980,12 +1003,13 @@ function signupFormMarkup() {
   return `
     <p class="eyebrow">Create Account</p>
     <h1>Sign Up</h1>
-    <p class="auth-note">Enter your profile details and verify your existing Urban Kicks email with a 6-digit OTP.</p>
+    <p class="auth-note">Create your Urban Kicks account, then verify your email with the 6-digit OTP sent to your inbox.</p>
     <form class="form email-auth-form" id="signupForm">
       <label>Full Name<input name="name" required autocomplete="name" placeholder="Your full name"></label>
+      <label>Phone Number<input name="mobile" type="tel" inputmode="tel" required autocomplete="tel" placeholder="+91 90000 00000"></label>
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
       <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
-      <label>Phone Number <span class="optional-label">Optional</span><input name="mobile" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 90000 00000"></label>
+      <label>Confirm Password<input name="confirmPassword" type="password" required minlength="6" autocomplete="new-password" placeholder="Repeat your password"></label>
       <button class="button primary" type="submit" id="sendEmailOtpButton">
         <span class="button-label">Create Account</span>
         <span class="button-spinner" aria-hidden="true"></span>
@@ -1104,10 +1128,17 @@ function getSignupFormData(form) {
   const email = String(data.email || "").trim();
   const name = String(data.name || "").trim();
   const password = String(data.password || "");
+  const confirmPassword = String(data.confirmPassword || "");
 
   if (!name) {
     notify("Enter your full name to create your Urban Kicks account.", "error");
     form.elements.name.focus();
+    return null;
+  }
+
+  if (!mobile) {
+    notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
+    form.elements.mobile.focus();
     return null;
   }
 
@@ -1123,9 +1154,9 @@ function getSignupFormData(form) {
     return null;
   }
 
-  if (data.mobile && !mobile) {
-    notify("Enter a valid phone number with country code, like +91 90000 00000.", "error");
-    form.elements.mobile.focus();
+  if (password !== confirmPassword) {
+    notify("Passwords do not match.", "error");
+    form.elements.confirmPassword.focus();
     return null;
   }
 
@@ -1319,6 +1350,11 @@ async function startEmailOtpRequest({ flow, email, profileData, button }) {
     if (error) {
       console.error(error);
       throw new Error(authErrorMessage(error, error.message || "Could not send email OTP."));
+    }
+    if (flow === "signup" && authResponse?.data?.session) {
+      console.warn("[auth] Supabase returned a signup session before OTP verification. Signing out until OTP is verified.");
+      await client.auth.signOut().catch((signOutError) => console.warn("[auth] pre-verification sign out failed", signOutError));
+      localStorage.removeItem(SESSION_KEY);
     }
 
     emailAuthState.email = email;
@@ -1547,6 +1583,9 @@ async function profilePage(section = "overview") {
               ${latestOrders.map((order) => `<article class="order-card"><div><strong>${safe(order.status)}</strong><div class="meta">${money(order.total)} / ${safe(order.paymentMethod)} / ${safe(order.createdAt || "")}</div></div><a class="button light" href="#/confirmation/${order._id}">View</a></article>`).join("") || '<div class="premium-empty"><h3>No orders yet</h3><p>Start with a new drop and your order history will appear here.</p><a class="button primary" href="#/">Shop sneakers</a></div>'}
             </div>
           </section>
+          <div class="profile-bottom-logout">
+            <button class="button danger" onclick="logout()">Logout</button>
+          </div>
         </div>
       </div>
     </section>
@@ -1597,7 +1636,7 @@ function profileSecurityPage(account) {
       </div>
       <div class="security-grid">
         <article class="panel security-card">
-          <h2>Email OTP only</h2>
+          <h2>Email verification</h2>
           <p class="meta">Signup and recovery use manual 6-digit email OTP inside the app. Login uses your email and password to avoid OTP rate limits.</p>
           <a class="button primary" href="#/auth/forgot">Recover account</a>
         </article>
@@ -1987,14 +2026,17 @@ window.resetAdminForm = resetAdminForm;
 window.deleteProduct = deleteProduct;
 window.updateOrderStatus = updateOrderStatus;
 
-navToggle.addEventListener("click", () => document.querySelector(".nav-links").classList.toggle("open"));
+navToggle?.addEventListener("click", () => document.querySelector(".nav-links")?.classList.toggle("open"));
 window.addEventListener("hashchange", router);
 window.addEventListener("urban-kicks-auth", (event) => {
   console.log(`[auth] state changed: ${event.detail.event}`);
+  updateMobileAccountLink();
 });
 
 document.addEventListener("DOMContentLoaded", () => {
   if (localStorage.getItem(THEME_KEY) === "light") document.body.classList.add("light-mode");
+  setupHeaderSearch();
+  updateMobileAccountLink();
   setupAuthStateListener().catch((error) => console.error("[auth] listener setup failed", error));
   verifySession();
   router();
