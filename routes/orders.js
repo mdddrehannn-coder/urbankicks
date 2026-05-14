@@ -38,7 +38,11 @@ router.post("/", async (req, res) => {
   try {
     const { token, user } = await currentUser(req);
     const { customer, items } = req.body;
+    const requestedPaymentMethod = String(req.body.paymentMethod || customer?.payment_method || customer?.paymentMethod || "cod").toLowerCase();
     if (!items || !items.length) return res.status(400).json({ message: "Cart is empty" });
+    if (!["cod", "cash on delivery"].includes(requestedPaymentMethod)) {
+      return res.status(400).json({ message: "UPI payments are coming soon. Please use Cash on Delivery for now." });
+    }
 
     const ids = items.map((item) => item.productId);
     const products = await request(rest("products", `select=*&id=in.(${ids.join(",")})`), { token });

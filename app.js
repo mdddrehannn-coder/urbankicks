@@ -51,7 +51,8 @@ app.get("/api/config/supabase", (_req, res) => {
 app.get("/api/config/payment", (_req, res) => {
   res.json({
     cod: { enabled: true, label: "Cash on Delivery" },
-    note: "Cash on Delivery is the only enabled payment option."
+    upi: { enabled: false, label: "UPI Payment", status: "Coming soon" },
+    note: "Cash on Delivery is live. UPI/Razorpay is prepared in the UI but disabled until integration."
   });
 });
 

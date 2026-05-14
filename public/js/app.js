@@ -46,6 +46,28 @@ let emailAuthState = {
   pendingEmailChange: null
 };
 let checkoutSelectedAddressId = "";
+let checkoutPaymentMethod = "cod";
+
+const PAYMENT_METHODS = {
+  cod: {
+    id: "cod",
+    label: "Cash on Delivery",
+    shortLabel: "COD",
+    enabled: true,
+    status: "Available now",
+    copy: "Pay in cash when your sneaker order reaches your doorstep.",
+    trust: "Order saved instantly / Pay on delivery"
+  },
+  upi: {
+    id: "upi",
+    label: "UPI Payment",
+    shortLabel: "UPI",
+    enabled: false,
+    status: "Coming soon",
+    copy: "Fast UPI checkout is being prepared for Urban Kicks.",
+    trust: "Razorpay-ready architecture / Disabled for now"
+  }
+};
 
 const categorySeed = [
   { slug: "speed-runners", title: "Speed Runners", copy: "Responsive shoes for fast city movement.", accent: "pink" },
@@ -973,7 +995,7 @@ function summaryPanel(totals, checkout = true) {
       <div class="summary-row"><span>Subtotal</span><strong>${money(totals.subtotal)}</strong></div>
       <div class="summary-row"><span>Shipping</span><strong>${totals.shipping ? money(totals.shipping) : "Free"}</strong></div>
       <div class="summary-row total"><span>Total</span><strong>${money(totals.total)}</strong></div>
-      <p class="notice">Payment method: Cash on Delivery only.</p>
+      <p class="notice">Payment method: COD live. UPI is being prepared.</p>
       ${checkout ? '<a class="button primary" href="#/checkout">Checkout</a>' : ""}
     </aside>
   `;
@@ -1034,27 +1056,136 @@ async function checkoutPage() {
     || addresses.find((address) => address.isDefault)
     || addresses[0];
   checkoutSelectedAddressId = selectedAddress?.id || "";
+  checkoutPaymentMethod = PAYMENT_METHODS[checkoutPaymentMethod]?.enabled ? checkoutPaymentMethod : "cod";
   app.innerHTML = `
     <section class="checkout-layout">
-      <div class="panel">
-        <p class="eyebrow">Checkout</p>
-        <h1>Delivery details</h1>
+      <div class="panel checkout-main-panel">
+        <div class="checkout-title-block">
+          <p class="eyebrow">Secure Checkout</p>
+          <h1>Delivery & Payment</h1>
+          <p>Choose a delivery address and payment method. COD is live today; UPI is staged for the next payment upgrade.</p>
+        </div>
         ${checkoutAddressSelector(addresses, selectedAddress)}
         <form class="form" id="checkoutForm">
           <input type="hidden" name="address_id" value="${safe(selectedAddress?.id || "")}">
+          <input type="hidden" name="payment_method" id="checkoutPaymentMethod" value="${safe(checkoutPaymentMethod)}">
           <label>Full name<input name="name" required value="${safe(selectedAddress?.fullName || getUser()?.user_metadata?.name || "")}" placeholder="Your name"></label>
           <label>Email<input name="email" type="email" required value="${safe(getUser()?.email || "")}" placeholder="you@example.com"></label>
           <label>Mobile number<input name="phone" required value="${safe(selectedAddress?.phone || "")}" placeholder="+91 90000 00000"></label>
           <label>City<input name="city" required value="${safe(selectedAddress?.city || "")}" placeholder="Bengaluru"></label>
           <label>Address<textarea name="address" rows="4" required placeholder="House, street, area">${safe(formatAddress(selectedAddress))}</textarea></label>
-          <label>Payment method<input value="Cash on Delivery" disabled></label>
-          <button class="button primary" type="submit">Place order</button>
+          ${paymentMethodSection(checkoutPaymentMethod)}
+          <button class="button primary checkout-place-order" type="submit"><span class="button-label">Place COD Order</span><span class="button-spinner" aria-hidden="true"></span></button>
         </form>
       </div>
       ${summaryPanel(totals, false)}
     </section>
   `;
   document.getElementById("checkoutForm").addEventListener("submit", placeOrder);
+  setupCheckoutPaymentControls();
+}
+
+function paymentMethodSection(selectedMethod = "cod") {
+  const cod = PAYMENT_METHODS.cod;
+  const upi = PAYMENT_METHODS.upi;
+  return `
+    <section class="payment-method-section" aria-label="Payment method">
+      <div class="payment-section-head">
+        <div>
+          <p class="eyebrow">Payment</p>
+          <h2>Choose payment method</h2>
+        </div>
+        <span>Secure checkout</span>
+      </div>
+      <div class="payment-method-grid">
+        ${paymentMethodCard(cod, selectedMethod === "cod")}
+        ${paymentMethodCard(upi, selectedMethod === "upi")}
+      </div>
+      <div class="upi-preview-strip" aria-label="UPI partners coming soon">
+        <span class="upi-wordmark">UPI</span>
+        <span>BHIM</span>
+        <span>GPay</span>
+        <span>PhonePe</span>
+        <span>Paytm</span>
+      </div>
+      <p class="payment-note">UPI/Razorpay code path is intentionally disabled until real payment integration is approved.</p>
+    </section>
+  `;
+}
+
+function paymentMethodCard(method, active = false) {
+  return `
+    <button class="payment-method-card ${active ? "active" : ""} ${method.enabled ? "" : "coming-soon"}" type="button" data-payment-method="${safe(method.id)}" aria-pressed="${active}">
+      <span class="payment-card-top">
+        <strong>${safe(method.label)}</strong>
+        <em>${safe(method.status)}</em>
+      </span>
+      <span class="payment-card-mark">${safe(method.shortLabel)}</span>
+      <small>${safe(method.copy)}</small>
+      <span class="payment-card-trust">${safe(method.trust)}</span>
+    </button>
+  `;
+}
+
+function setupCheckoutPaymentControls() {
+  const form = document.getElementById("checkoutForm");
+  const hidden = document.getElementById("checkoutPaymentMethod");
+  document.querySelectorAll("[data-payment-method]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const methodId = button.dataset.paymentMethod;
+      const method = PAYMENT_METHODS[methodId];
+      if (!method?.enabled) {
+        showUpiComingSoonModal();
+        return;
+      }
+      checkoutPaymentMethod = methodId;
+      if (hidden) hidden.value = methodId;
+      document.querySelectorAll("[data-payment-method]").forEach((card) => {
+        const isActive = card.dataset.paymentMethod === methodId;
+        card.classList.toggle("active", isActive);
+        card.setAttribute("aria-pressed", String(isActive));
+      });
+      form?.querySelector(".checkout-place-order .button-label")?.replaceChildren(document.createTextNode("Place COD Order"));
+    });
+  });
+}
+
+function showUpiComingSoonModal() {
+  document.querySelector(".payment-coming-soon-backdrop")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "payment-coming-soon-backdrop";
+  modal.innerHTML = `
+    <section class="payment-coming-soon-modal" role="dialog" aria-modal="true" aria-labelledby="upiComingSoonTitle">
+      <button class="notification-dismiss payment-modal-close" type="button" aria-label="Close UPI coming soon">&times;</button>
+      <div class="upi-modal-brand">
+        <span class="upi-wordmark">UPI</span>
+        <span>Secure checkout</span>
+      </div>
+      <p class="eyebrow">Coming Soon</p>
+      <h2 id="upiComingSoonTitle">UPI payments are almost here</h2>
+      <p>Urban Kicks is preparing UPI checkout for faster prepaid orders. Razorpay is not connected yet, so no payment popup will open and no transaction will be created.</p>
+      <div class="upi-logo-row" aria-label="UPI options planned">
+        <span>BHIM</span>
+        <span>GPay</span>
+        <span>PhonePe</span>
+        <span>Paytm</span>
+      </div>
+      <button class="button primary" type="button" id="continueWithCodButton">Continue with COD</button>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  window.setTimeout(() => modal.classList.add("show"), 20);
+  const close = () => modal.remove();
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) close();
+  });
+  modal.querySelector(".payment-modal-close")?.addEventListener("click", close);
+  modal.querySelector("#continueWithCodButton")?.addEventListener("click", () => {
+    checkoutPaymentMethod = "cod";
+    document.getElementById("checkoutPaymentMethod")?.setAttribute("value", "cod");
+    document.querySelector('[data-payment-method="cod"]')?.classList.add("active");
+    close();
+  });
 }
 
 function checkoutAddressSelector(addresses, selectedAddress) {
@@ -1086,15 +1217,29 @@ function selectCheckoutAddress(id) {
 
 async function placeOrder(event) {
   event.preventDefault();
-  const data = Object.fromEntries(new FormData(event.target));
-  const order = await api("/api/orders", {
-    method: "POST",
-    body: JSON.stringify({ customer: data, items: getCart() })
-  });
-  localStorage.removeItem(CART_KEY);
-  catalogCache = null;
-  renderCounters();
-  location.hash = `#/confirmation/${order._id}`;
+  const form = event.target;
+  const button = form.querySelector("button[type='submit']");
+  const data = Object.fromEntries(new FormData(form));
+  if (data.payment_method !== "cod") {
+    showUpiComingSoonModal();
+    return;
+  }
+  setButtonLoading(button, true, "Placing COD order...");
+  try {
+    const order = await api("/api/orders", {
+      method: "POST",
+      body: JSON.stringify({ customer: data, items: getCart(), paymentMethod: "cod" })
+    });
+    localStorage.removeItem(CART_KEY);
+    catalogCache = null;
+    renderCounters();
+    notify("COD order placed successfully.", "success");
+    location.hash = `#/confirmation/${order._id}`;
+  } catch (error) {
+    showAuthError(error, error.message || "Could not place order.");
+  } finally {
+    setButtonLoading(button, false);
+  }
 }
 
 function confirmationPage(orderId) {

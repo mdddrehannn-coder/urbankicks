@@ -5988,3 +5988,322 @@ body.light-mode .address-form-actions {
     min-height: 52px;
   }
 }
+
+.checkout-main-panel {
+  overflow: hidden;
+  border-radius: 28px;
+}
+
+.checkout-title-block {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.checkout-title-block h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.7rem, 4vw, 2.7rem);
+  letter-spacing: 0;
+}
+
+.checkout-title-block p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.55;
+}
+
+.payment-method-section {
+  display: grid;
+  gap: 14px;
+  margin: 6px 0 4px;
+  padding: clamp(16px, 4vw, 22px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(227, 6, 19, 0.16), transparent 16rem),
+    rgba(255, 255, 255, 0.065);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+}
+
+.payment-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.payment-section-head h2 {
+  margin: 3px 0 0;
+  color: #ffffff;
+  font-size: clamp(1.12rem, 2.4vw, 1.45rem);
+}
+
+.payment-section-head > span,
+.payment-card-trust,
+.payment-note {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.payment-method-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payment-method-card {
+  position: relative;
+  min-height: 176px;
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 200ms ease, border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+}
+
+.payment-method-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 16px 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(227, 6, 19, 0.8), transparent);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.payment-method-card:hover,
+.payment-method-card.active {
+  transform: translateY(-2px);
+  border-color: rgba(227, 6, 19, 0.5);
+  background: rgba(227, 6, 19, 0.12);
+  box-shadow: 0 18px 42px rgba(227, 6, 19, 0.14);
+}
+
+.payment-method-card.active::after {
+  opacity: 1;
+}
+
+.payment-method-card.coming-soon {
+  cursor: pointer;
+}
+
+.payment-method-card.coming-soon .payment-card-mark {
+  color: #08090b;
+  background: #ffffff;
+}
+
+.payment-card-top {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.payment-card-top strong {
+  font-size: 1.02rem;
+}
+
+.payment-card-top em {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ff6670;
+  font-size: 0.67rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.payment-card-mark,
+.upi-wordmark {
+  width: fit-content;
+  border-radius: 13px;
+  padding: 8px 11px;
+  background: #e30613;
+  color: #ffffff;
+  font-family: Inter, Manrope, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  box-shadow: 0 10px 24px rgba(227, 6, 19, 0.22);
+}
+
+.payment-method-card small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.upi-preview-strip,
+.upi-logo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.upi-preview-strip span:not(.upi-wordmark),
+.upi-logo-row span {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.payment-note {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.checkout-place-order {
+  min-height: 54px;
+}
+
+.payment-coming-soon-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 5, 7, 0.48);
+  backdrop-filter: blur(18px);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.payment-coming-soon-backdrop.show {
+  opacity: 1;
+}
+
+.payment-coming-soon-modal {
+  position: relative;
+  width: min(520px, 100%);
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 30px;
+  padding: clamp(20px, 5vw, 30px);
+  background:
+    radial-gradient(circle at top left, rgba(227, 6, 19, 0.22), transparent 18rem),
+    rgba(8, 9, 12, 0.94);
+  color: #ffffff;
+  box-shadow: 0 30px 95px rgba(0, 0, 0, 0.46);
+  transform: translateY(12px) scale(0.98);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.payment-coming-soon-backdrop.show .payment-coming-soon-modal {
+  transform: translateY(0) scale(1);
+}
+
+.payment-coming-soon-modal h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.45rem, 4vw, 2.1rem);
+}
+
+.payment-coming-soon-modal p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.6;
+}
+
+.payment-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.upi-modal-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 42px;
+}
+
+.upi-modal-brand > span:last-child {
+  color: rgba(255, 255, 255, 0.68);
+  font-weight: 850;
+}
+
+body.light-mode .checkout-title-block h1,
+body.light-mode .payment-section-head h2 {
+  color: #08090b;
+}
+
+body.light-mode .checkout-title-block p,
+body.light-mode .payment-section-head > span,
+body.light-mode .payment-card-trust,
+body.light-mode .payment-note {
+  color: #687181;
+}
+
+body.light-mode .payment-method-section {
+  border-color: rgba(12, 13, 16, 0.08);
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(12, 13, 16, 0.08);
+}
+
+body.light-mode .payment-method-card {
+  border-color: rgba(12, 13, 16, 0.08);
+  background: #f5f6f8;
+  color: #08090b;
+}
+
+body.light-mode .payment-method-card small,
+body.light-mode .upi-preview-strip span:not(.upi-wordmark) {
+  color: #687181;
+}
+
+body.light-mode .payment-method-card:hover,
+body.light-mode .payment-method-card.active {
+  border-color: rgba(227, 6, 19, 0.36);
+  background: rgba(227, 6, 19, 0.07);
+}
+
+body.light-mode .payment-card-top em,
+body.light-mode .upi-preview-strip span:not(.upi-wordmark) {
+  background: #ffffff;
+  border-color: rgba(12, 13, 16, 0.08);
+}
+
+@media (max-width: 720px) {
+  .checkout-main-panel {
+    border-radius: 24px;
+  }
+
+  .payment-section-head {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .payment-method-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-method-card {
+    min-height: 158px;
+  }
+
+  .payment-coming-soon-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .payment-coming-soon-modal {
+    border-radius: 28px 28px 22px 22px;
+  }
+}
