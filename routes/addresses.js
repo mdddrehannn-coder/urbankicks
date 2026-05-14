@@ -1,5 +1,10 @@
 const express = require("express");
 const { request, rest, preferReturn, getBearerToken, getAuthUser } = require("../lib/supabase");
+const {
+  INDIA_STATE_CITIES,
+  normalizeAddressText,
+  isKnownState
+} = require("../lib/india-address-data");
 
 const router = express.Router();
 
@@ -50,16 +55,62 @@ function addressPayload(body, userId) {
   };
 }
 
-function validateAddress(payload) {
+async function lookupPincode(pincode) {
+  if (!/^\d{6}$/.test(String(pincode || ""))) {
+    return { valid: false, message: "Invalid Indian PIN code" };
+  }
+
+  try {
+    const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+    const data = await response.json();
+    const result = Array.isArray(data) ? data[0] : null;
+    const offices = Array.isArray(result?.PostOffice) ? result.PostOffice : [];
+    if (result?.Status !== "Success" || !offices.length) {
+      return { valid: false, message: "Invalid Indian PIN code" };
+    }
+    const primary = offices[0];
+    return {
+      valid: true,
+      pincode,
+      state: primary.State || "",
+      city: primary.District || primary.Block || primary.Name || "",
+      district: primary.District || "",
+      offices: offices.map((office) => ({
+        name: office.Name || "",
+        city: office.District || office.Block || office.Name || "",
+        state: office.State || ""
+      }))
+    };
+  } catch (error) {
+    console.warn("[addresses] pincode lookup failed:", error.message);
+    return { valid: false, message: "Could not verify this PIN code. Please try again." };
+  }
+}
+
+function pincodeMatchesAddress(pincodeInfo, payload) {
+  if (!pincodeInfo.valid) return pincodeInfo.message;
+  const stateMatches = normalizeAddressText(pincodeInfo.state) === normalizeAddressText(payload.state);
+  const cityMatches = pincodeInfo.offices.some((office) => (
+    normalizeAddressText(office.city) === normalizeAddressText(payload.city)
+    || normalizeAddressText(office.name) === normalizeAddressText(payload.city)
+  ));
+  if (!stateMatches) return "PIN code does not match selected state";
+  if (!cityMatches) return "PIN code does not match selected city";
+  return "";
+}
+
+async function validateAddress(payload) {
   if (!payload.full_name) return "Full name is required";
   if (!/^\+?\d{10,15}$/.test(payload.phone.replace(/[^\d+]/g, ""))) return "Enter a valid phone number";
   if (!/^\d{6}$/.test(payload.pincode)) return "Enter a valid 6-digit pincode";
+  if (!isKnownState(payload.state)) return "Choose a valid Indian state";
   if (!payload.city) return "City is required";
   if (!payload.state) return "State is required";
   if (!payload.area) return "Locality / Area / Street is required";
   if (!payload.house_no) return "Flat / House / Building is required";
   if (!["Home", "Work", "Other"].includes(payload.address_type)) return "Choose a valid address type";
-  return "";
+  const pincodeInfo = await lookupPincode(payload.pincode);
+  return pincodeMatchesAddress(pincodeInfo, payload);
 }
 
 function isMissingAddressTable(error) {
@@ -99,12 +150,21 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/india-meta", (_req, res) => {
+  res.json({ states: INDIA_STATE_CITIES });
+});
+
+router.get("/pincode/:pincode", async (req, res) => {
+  const result = await lookupPincode(String(req.params.pincode || "").replace(/\D/g, ""));
+  res.status(result.valid ? 200 : 400).json(result);
+});
+
 router.post("/", async (req, res) => {
   try {
     const auth = await requireUser(req, res);
     if (!auth) return;
     const payload = addressPayload(req.body, auth.user.id);
-    const validationError = validateAddress(payload);
+    const validationError = await validateAddress(payload);
     if (validationError) return res.status(400).json({ message: validationError });
 
     const existing = await request(rest("addresses", `select=id&user_id=eq.${auth.user.id}&limit=1`), { token: auth.token });
@@ -131,7 +191,7 @@ router.patch("/:id", async (req, res) => {
     const auth = await requireUser(req, res);
     if (!auth) return;
     const payload = addressPayload(req.body, auth.user.id);
-    const validationError = validateAddress(payload);
+    const validationError = await validateAddress(payload);
     if (validationError) return res.status(400).json({ message: validationError });
 
     if (payload.is_default) await clearDefaultAddress(auth.token, auth.user.id, req.params.id);

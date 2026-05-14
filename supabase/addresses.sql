@@ -28,6 +28,20 @@ alter table public.addresses
 add constraint addresses_address_type_check
 check (address_type in ('Home', 'Work', 'Other'));
 
+alter table public.addresses
+drop constraint if exists addresses_pincode_format_check;
+
+alter table public.addresses
+add constraint addresses_pincode_format_check
+check (pincode ~ '^[0-9]{6}$');
+
+alter table public.addresses
+drop constraint if exists addresses_phone_format_check;
+
+alter table public.addresses
+add constraint addresses_phone_format_check
+check (phone ~ '^\\+?[0-9]{10,15}$');
+
 create unique index if not exists one_default_address_per_user
 on public.addresses(user_id)
 where is_default = true;

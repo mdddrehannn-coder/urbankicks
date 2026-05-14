@@ -2647,6 +2647,126 @@ body {
   }
 }
 
+/* Smart India address form */
+.smart-field {
+  position: relative;
+}
+
+.smart-field input.invalid,
+.smart-select-field input.invalid {
+  border-color: rgba(227, 6, 19, 0.62);
+  box-shadow: 0 0 0 4px rgba(227, 6, 19, 0.1);
+}
+
+.field-error {
+  min-height: 17px;
+  color: #ff5660;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.field-error:empty {
+  display: none;
+}
+
+.smart-select-field {
+  z-index: 3;
+}
+
+.smart-select-search {
+  padding-right: 38px;
+}
+
+.smart-select-field::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  top: 42px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #8c95a3;
+  border-bottom: 2px solid #8c95a3;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.smart-select-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: grid;
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid rgba(12, 13, 16, 0.1);
+  border-radius: 18px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px rgba(12, 13, 16, 0.16);
+  backdrop-filter: blur(20px);
+  animation: smartMenuIn 160ms ease both;
+}
+
+.smart-select-menu[hidden] {
+  display: none;
+}
+
+.smart-select-menu button,
+.smart-select-empty {
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #111318;
+  text-align: left;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.smart-select-menu button:hover,
+.smart-select-menu button:focus {
+  background: #0b0c10;
+  color: #ffffff;
+  outline: 0;
+}
+
+.smart-select-empty {
+  color: #7a8492;
+  cursor: default;
+}
+
+@keyframes smartMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  .smart-select-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: max(96px, calc(env(safe-area-inset-bottom) + 96px));
+    max-height: min(420px, 58vh);
+    border-radius: 24px;
+    padding: 10px;
+  }
+
+  .smart-select-menu button {
+    min-height: 50px;
+    font-size: 0.95rem;
+  }
+}
+
 /* Light theme contrast fixes */
 body.light-mode {
   color-scheme: light;

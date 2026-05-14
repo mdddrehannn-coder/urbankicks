@@ -26,6 +26,9 @@ const EMAIL_OTP_MAX_VERIFY_ATTEMPTS = 5;
 let catalogCache = null;
 let wishlistCache = null;
 let addressCache = null;
+let indiaAddressMeta = null;
+let addressPincodeState = { pincode: "", valid: false, state: "", city: "", message: "" };
+let smartAddressOutsideClickReady = false;
 let authRefreshTimer = null;
 let supabaseClient = null;
 let supabaseClientPromise = null;
@@ -1870,8 +1873,8 @@ function addressFormPage(account, mode = "new", id = "") {
         `)}
         ${addressFormSection("Address Info", `
           ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
-          ${addressField("City", "city", existing.city || "", "text", true)}
-          ${addressField("State", "state", existing.state || "", "text", true)}
+          ${smartSelectField("State / Union Territory", "state", existing.state || "", "Search state")}
+          ${smartSelectField("City", "city", existing.city || "", "Select state first")}
           ${addressField("Locality / Area / Street", "area", existing.area || "", "text", true)}
           ${addressField("Flat / House / Building", "houseNo", existing.houseNo || "", "text", true)}
           ${addressField("Landmark (optional)", "landmark", existing.landmark || "", "text", false)}
@@ -1895,7 +1898,19 @@ function addressFormSection(title, fields) {
 }
 
 function addressField(label, name, value = "", type = "text", required = false, inputmode = "") {
-  return `<label class="modern-field">${safe(label)}<input name="${name}" type="${type}" value="${safe(value)}" ${required ? "required" : ""} ${inputmode ? `inputmode="${inputmode}"` : ""}></label>`;
+  return `<label class="modern-field smart-field">${safe(label)}<input name="${name}" type="${type}" value="${safe(value)}" ${required ? "required" : ""} ${inputmode ? `inputmode="${inputmode}"` : ""}><small class="field-error" data-field-error="${name}"></small></label>`;
+}
+
+function smartSelectField(label, name, value = "", placeholder = "Search") {
+  return `
+    <label class="modern-field smart-field smart-select-field" data-smart-select="${name}">
+      ${safe(label)}
+      <input type="hidden" name="${name}" value="${safe(value)}">
+      <input class="smart-select-search" id="${name}Search" type="search" autocomplete="off" value="${safe(value)}" placeholder="${safe(placeholder)}" role="combobox" aria-expanded="false">
+      <div class="smart-select-menu" id="${name}Menu" role="listbox"></div>
+      <small class="field-error" data-field-error="${name}"></small>
+    </label>
+  `;
 }
 
 async function profilePage(section = "overview", action = "", id = "") {
@@ -2327,27 +2342,165 @@ function setupProfileEditForm() {
 function setupAddressForm() {
   const form = document.getElementById("addressForm");
   form?.addEventListener("submit", saveAddress);
-  form?.elements.pincode?.addEventListener("input", () => autofillCityState(form));
+  if (!form) return;
+  setupSmartAddressControls(form);
+  setupSmartAddressOutsideClick();
+  form.elements.pincode?.addEventListener("input", () => handlePincodeInput(form));
 }
 
-function autofillCityState(form) {
-  const pin = String(form.elements.pincode.value || "").replace(/\D/g, "").slice(0, 6);
-  form.elements.pincode.value = pin;
-  const known = {
-    "800007": ["Patna", "Bihar"],
-    "800001": ["Patna", "Bihar"],
-    "110001": ["New Delhi", "Delhi"],
-    "400001": ["Mumbai", "Maharashtra"],
-    "560001": ["Bengaluru", "Karnataka"],
-    "700001": ["Kolkata", "West Bengal"]
+async function getIndiaAddressMeta() {
+  if (indiaAddressMeta) return indiaAddressMeta;
+  const fallback = {
+    Maharashtra: ["Mumbai", "Pune", "Nagpur", "Nashik", "Thane"],
+    Delhi: ["New Delhi", "Delhi", "Dwarka", "Rohini"],
+    Karnataka: ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi"],
+    "West Bengal": ["Kolkata", "Howrah", "Siliguri", "Durgapur"],
+    "Uttar Pradesh": ["Lucknow", "Kanpur", "Varanasi", "Noida"],
+    Bihar: ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur"]
   };
-  if (known[pin]) {
-    form.elements.city.value = known[pin][0];
-    form.elements.state.value = known[pin][1];
+  try {
+    const data = await api("/api/addresses/india-meta");
+    indiaAddressMeta = data.states || fallback;
+  } catch (_error) {
+    indiaAddressMeta = fallback;
+  }
+  return indiaAddressMeta;
+}
+
+async function setupSmartAddressControls(form) {
+  const states = await getIndiaAddressMeta();
+  setupSmartSelect(form, "state", Object.keys(states), (state) => {
+    setSmartSelectValue(form, "state", state);
+    setSmartSelectValue(form, "city", "");
+    setupSmartSelect(form, "city", states[state] || []);
+    clearFieldError(form, "state");
+    validateSelectedPincodeMatch(form);
+  });
+  setupSmartSelect(form, "city", states[form.elements.state?.value] || [], (city) => {
+    setSmartSelectValue(form, "city", city);
+    clearFieldError(form, "city");
+    validateSelectedPincodeMatch(form);
+  });
+}
+
+function setupSmartSelect(form, name, options, onSelect) {
+  const field = form.querySelector(`[data-smart-select="${name}"]`);
+  const search = field?.querySelector(".smart-select-search");
+  const menu = field?.querySelector(".smart-select-menu");
+  if (!field || !search || !menu) return;
+
+  const renderOptions = () => {
+    const query = search.value.trim().toLowerCase();
+    const filtered = options.filter((option) => option.toLowerCase().includes(query)).slice(0, 80);
+    menu.innerHTML = filtered.map((option) => `<button type="button" role="option" data-smart-option="${safe(option)}">${safe(option)}</button>`).join("")
+      || '<span class="smart-select-empty">No matching options</span>';
+    menu.hidden = false;
+    search.setAttribute("aria-expanded", "true");
+  };
+
+  search.onfocus = renderOptions;
+  search.oninput = () => {
+    form.elements[name].value = "";
+    renderOptions();
+  };
+  menu.onmousedown = (event) => {
+    const option = event.target.closest("[data-smart-option]");
+    if (!option) return;
+    event.preventDefault();
+    onSelect(option.dataset.smartOption || "");
+    menu.hidden = true;
+    search.setAttribute("aria-expanded", "false");
+  };
+  menu.hidden = true;
+}
+
+function setupSmartAddressOutsideClick() {
+  if (smartAddressOutsideClickReady) return;
+  smartAddressOutsideClickReady = true;
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll(".smart-select-field").forEach((field) => {
+      if (field.contains(event.target)) return;
+      const menu = field.querySelector(".smart-select-menu");
+      const search = field.querySelector(".smart-select-search");
+      if (menu) menu.hidden = true;
+      search?.setAttribute("aria-expanded", "false");
+    });
+  });
+}
+
+function setSmartSelectValue(form, name, value) {
+  if (!form.elements[name]) return;
+  form.elements[name].value = value;
+  const search = form.querySelector(`#${name}Search`);
+  if (search) search.value = value;
+}
+
+function setFieldError(form, name, message) {
+  const error = form.querySelector(`[data-field-error="${name}"]`);
+  if (error) error.textContent = message || "";
+  form.elements[name]?.classList.toggle("invalid", Boolean(message));
+}
+
+function clearFieldError(form, name) {
+  setFieldError(form, name, "");
+}
+
+function handlePincodeInput(form) {
+  const input = form.elements.pincode;
+  input.value = String(input.value || "").replace(/\D/g, "").slice(0, 6);
+  clearFieldError(form, "pincode");
+  addressPincodeState = { pincode: input.value, valid: false, state: "", city: "", message: "" };
+  if (input.value.length === 6) validatePincodeWithServer(form, input.value);
+}
+
+async function validatePincodeWithServer(form, pincode) {
+  setFieldError(form, "pincode", "Checking PIN code...");
+  try {
+    const result = await api(`/api/addresses/pincode/${pincode}`);
+    addressPincodeState = {
+      pincode,
+      valid: true,
+      state: result.state || "",
+      city: result.city || "",
+      message: ""
+    };
+    clearFieldError(form, "pincode");
+    if (result.state) setSmartSelectValue(form, "state", result.state);
+    if (result.state && result.city) {
+      indiaAddressMeta[result.state] = indiaAddressMeta[result.state] || [];
+      if (!indiaAddressMeta[result.state].some((city) => city.toLowerCase() === result.city.toLowerCase())) {
+        indiaAddressMeta[result.state] = [result.city, ...indiaAddressMeta[result.state]];
+      }
+    }
+    await setupSmartAddressControls(form);
+    const cityOptions = (indiaAddressMeta || {})[result.state] || [];
+    const city = cityOptions.find((item) => item.toLowerCase() === String(result.city || "").toLowerCase()) || cityOptions[0] || result.city || "";
+    if (city) setSmartSelectValue(form, "city", city);
+    validateSelectedPincodeMatch(form);
+  } catch (error) {
+    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Invalid Indian PIN code" };
+    setFieldError(form, "pincode", "Invalid Indian PIN code");
   }
 }
 
-function getAddressFormPayload(form) {
+function validateSelectedPincodeMatch(form) {
+  if (!addressPincodeState.pincode || addressPincodeState.pincode.length !== 6 || !addressPincodeState.valid) return true;
+  const selectedState = form.elements.state.value;
+  const selectedCity = form.elements.city.value;
+  if (selectedState && addressPincodeState.state && selectedState !== addressPincodeState.state) {
+    setFieldError(form, "state", "PIN code does not match selected state");
+    return false;
+  }
+  if (selectedCity && addressPincodeState.city && selectedCity.toLowerCase() !== addressPincodeState.city.toLowerCase()) {
+    setFieldError(form, "city", "PIN code does not match selected city");
+    return false;
+  }
+  clearFieldError(form, "state");
+  clearFieldError(form, "city");
+  return true;
+}
+
+async function getAddressFormPayload(form) {
   const data = Object.fromEntries(new FormData(form));
   const phone = normalizePhoneNumber(data.phone);
   const alternatePhone = data.alternatePhone ? normalizePhoneNumber(data.alternatePhone) : "";
@@ -2356,6 +2509,13 @@ function getAddressFormPayload(form) {
   if (!phone) throw new Error("Enter a valid phone number.");
   if (alternatePhone === "" && data.alternatePhone) throw new Error("Enter a valid alternate phone number.");
   if (!/^\d{6}$/.test(pincode)) throw new Error("Enter a valid 6-digit pincode.");
+  if (!data.state) throw new Error("Choose a valid Indian state.");
+  if (!data.city) throw new Error("Choose a city for the selected state.");
+  if (addressPincodeState.pincode !== pincode || !addressPincodeState.valid) {
+    await validatePincodeWithServer(form, pincode);
+  }
+  if (!addressPincodeState.valid) throw new Error(addressPincodeState.message || "Invalid Indian PIN code");
+  if (!validateSelectedPincodeMatch(form)) throw new Error("PIN code does not match selected city or state.");
   ["city", "state", "area", "houseNo"].forEach((field) => {
     if (!String(data[field] || "").trim()) throw new Error(`${field === "houseNo" ? "Flat / House / Building" : field} is required.`);
   });
@@ -2380,7 +2540,7 @@ async function saveAddress(event) {
   const button = form.querySelector("button[type='submit']");
   let payload;
   try {
-    payload = getAddressFormPayload(form);
+    payload = await getAddressFormPayload(form);
   } catch (error) {
     notify(error.message, "error");
     return;
