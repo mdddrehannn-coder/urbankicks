@@ -3397,6 +3397,18 @@ function swapImage(image) {
   document.getElementById("mainProductImage").src = image;
 }
 
+function applyTheme(theme) {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  document.body.classList.toggle("light-mode", nextTheme === "light");
+  document.documentElement.dataset.theme = nextTheme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", nextTheme === "dark" ? "#070707" : "#ffffff");
+  return nextTheme;
+}
+
+function loadSavedTheme() {
+  return applyTheme(localStorage.getItem(THEME_KEY) || "light");
+}
+
 function getCurrentTheme() {
   return document.body.classList.contains("light-mode") ? "light" : "dark";
 }
@@ -3411,8 +3423,7 @@ function updateThemeCards() {
 }
 
 function setTheme(theme) {
-  const nextTheme = theme === "light" ? "light" : "dark";
-  document.body.classList.toggle("light-mode", nextTheme === "light");
+  const nextTheme = applyTheme(theme);
   localStorage.setItem(THEME_KEY, nextTheme);
   updateThemeCards();
   notify(`${nextTheme === "light" ? "White + Black" : "Black + Red"} theme applied.`, "success");
@@ -3485,7 +3496,7 @@ window.addEventListener("urban-kicks-auth", (event) => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
-  if (localStorage.getItem(THEME_KEY) === "light") document.body.classList.add("light-mode");
+  loadSavedTheme();
   setupSplashScreen();
   updateThemeCards();
   setupHeaderSearch();

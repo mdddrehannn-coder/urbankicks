@@ -8,7 +8,7 @@
       name="description"
       content="Urban Kicks India is a premium sneaker ecommerce store for curated streetwear drops, wishlist, cart, and smooth checkout."
     >
-    <meta name="theme-color" content="#070707">
+    <meta name="theme-color" content="#ffffff">
     <script>
       (function () {
         try {
@@ -26,7 +26,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Manrope:wght@500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/styles.css">
   </head>
-  <body>
+  <body class="light-mode">
+    <script>
+      (function () {
+        try {
+          var savedTheme = localStorage.getItem("urbanKicksTheme") || "light";
+          document.body.classList.toggle("light-mode", savedTheme !== "dark");
+          document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
+          var themeMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeMeta) themeMeta.setAttribute("content", savedTheme === "dark" ? "#070707" : "#ffffff");
+        } catch (_error) {
+          document.body.classList.add("light-mode");
+          document.documentElement.dataset.theme = "light";
+        }
+      }());
+    </script>
     <div class="splash-screen" id="splashScreen" aria-label="Urban Kicks loading">
       <div class="splash-wordmark">Urban Kicks</div>
     </div>

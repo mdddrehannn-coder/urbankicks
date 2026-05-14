@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   --ink: #0b0d12;
   --paper: #f7f7f5;
   --surface: #111111;
@@ -17,6 +17,10 @@
   --violet: #7353ff;
   --shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
   --soft-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+body:not(.light-mode) {
+  color-scheme: dark;
 }
 
 * {
