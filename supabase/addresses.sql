@@ -21,6 +21,13 @@ create table if not exists public.addresses (
 create index if not exists addresses_user_id_idx on public.addresses(user_id);
 create index if not exists addresses_user_default_idx on public.addresses(user_id, is_default desc);
 
+alter table public.addresses
+drop constraint if exists addresses_address_type_check;
+
+alter table public.addresses
+add constraint addresses_address_type_check
+check (address_type in ('Home', 'Work', 'Other'));
+
 create unique index if not exists one_default_address_per_user
 on public.addresses(user_id)
 where is_default = true;
