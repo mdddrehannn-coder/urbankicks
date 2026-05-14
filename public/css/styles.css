@@ -3513,6 +3513,179 @@ body.light-mode .account-arrow {
   }
 }
 
+/* Urgent premium UX fixes */
+.notification-permission-backdrop {
+  align-items: start;
+  place-items: start center;
+  padding: max(18px, env(safe-area-inset-top)) 16px 16px;
+  background: linear-gradient(180deg, rgba(4, 5, 7, 0.42), rgba(4, 5, 7, 0.08) 58%, transparent);
+}
+
+.notification-permission-modal {
+  border-radius: 28px;
+  padding: clamp(18px, 4vw, 26px);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055)),
+    rgba(8, 9, 12, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.38), 0 0 42px rgba(227, 6, 19, 0.14);
+  transform: translateY(-18px) scale(0.98);
+}
+
+.notification-permission-modal h2 {
+  font-family: "Bebas Neue", Oswald, Inter, sans-serif;
+  font-size: clamp(2.1rem, 7vw, 3.2rem);
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+}
+
+.notification-permission-modal p {
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.55;
+}
+
+.notification-permission-modal .profile-form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.notification-permission-modal .button {
+  min-height: 48px;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.notification-guide-modal ol {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 20px;
+  padding-left: 20px;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.5;
+}
+
+.notification-denied-banner {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 90;
+  width: min(720px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  padding: 13px 14px 13px 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.055)),
+    rgba(8, 9, 12, 0.9);
+  color: #ffffff;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.34), 0 0 36px rgba(227, 6, 19, 0.12);
+  backdrop-filter: blur(22px);
+  opacity: 0;
+  transform: translate(-50%, -18px) scale(0.98);
+  transition: opacity 220ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notification-denied-banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.notification-denied-banner strong,
+.notification-denied-banner span {
+  display: block;
+}
+
+.notification-denied-banner strong {
+  font-weight: 900;
+}
+
+.notification-denied-banner span {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.notification-denied-banner .button {
+  min-height: 40px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.notification-dismiss {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.mobile-bottom-nav a.active,
+body.light-mode .mobile-bottom-nav a.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 10px 26px rgba(227, 6, 19, 0.14);
+}
+
+body.light-mode .mobile-bottom-nav a.active {
+  background: rgba(8, 9, 12, 0.88);
+}
+
+.mobile-bottom-nav a.active svg,
+body.light-mode .mobile-bottom-nav a.active svg {
+  color: #ffffff;
+  fill: currentColor;
+  opacity: 1;
+}
+
+.address-hero {
+  border-radius: 28px;
+}
+
+.address-grid {
+  gap: 14px;
+}
+
+.address-card {
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.address-empty-state {
+  display: grid;
+  justify-items: start;
+  padding: clamp(24px, 6vw, 38px);
+  border-style: solid;
+  background:
+    radial-gradient(circle at top left, rgba(227, 6, 19, 0.13), transparent 18rem),
+    rgba(255, 255, 255, 0.065);
+}
+
+@media (max-width: 640px) {
+  .notification-denied-banner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .notification-denied-banner .button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .notification-permission-modal .profile-form-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Master premium polish pass */
 body {
   font-family: Inter, Manrope, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -5189,5 +5362,127 @@ body.light-mode .sticky-save-bar {
 
   .sticky-save-bar {
     bottom: 82px;
+  }
+}
+
+/* Final urgent premium overrides */
+.notification-permission-backdrop {
+  align-items: start;
+  place-items: start center;
+  padding: max(18px, env(safe-area-inset-top)) 16px 16px;
+  background: linear-gradient(180deg, rgba(4, 5, 7, 0.42), rgba(4, 5, 7, 0.08) 58%, transparent);
+}
+
+.notification-permission-modal {
+  border-radius: 28px;
+  padding: clamp(18px, 4vw, 26px);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055)),
+    rgba(8, 9, 12, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.38), 0 0 42px rgba(227, 6, 19, 0.14);
+  transform: translateY(-18px) scale(0.98);
+}
+
+.notification-permission-backdrop.show .notification-permission-modal {
+  transform: translateY(0) scale(1);
+}
+
+.notification-denied-banner {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 90;
+  width: min(720px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  padding: 13px 14px 13px 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.055)),
+    rgba(8, 9, 12, 0.9);
+  color: #ffffff;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.34), 0 0 36px rgba(227, 6, 19, 0.12);
+  backdrop-filter: blur(22px);
+  opacity: 0;
+  transform: translate(-50%, -18px) scale(0.98);
+  transition: opacity 220ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notification-denied-banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.notification-denied-banner strong,
+.notification-denied-banner span {
+  display: block;
+}
+
+.notification-denied-banner span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.84rem;
+}
+
+.notification-denied-banner .button {
+  min-height: 40px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.notification-dismiss {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.mobile-bottom-nav a.active,
+body.light-mode .mobile-bottom-nav a.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 10px 26px rgba(227, 6, 19, 0.14);
+}
+
+body.light-mode .mobile-bottom-nav a.active {
+  background: rgba(8, 9, 12, 0.88);
+}
+
+.mobile-bottom-nav a.active svg,
+body.light-mode .mobile-bottom-nav a.active svg {
+  color: #ffffff;
+  fill: currentColor;
+  opacity: 1;
+}
+
+.address-empty-state {
+  display: grid;
+  justify-items: start;
+  padding: clamp(24px, 6vw, 38px);
+  border-style: solid;
+  background:
+    radial-gradient(circle at top left, rgba(227, 6, 19, 0.13), transparent 18rem),
+    rgba(255, 255, 255, 0.065);
+}
+
+@media (max-width: 640px) {
+  .notification-denied-banner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .notification-denied-banner .button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 }

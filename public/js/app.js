@@ -479,7 +479,7 @@ async function getAddresses(force = false) {
   try {
     addressCache = await api("/api/addresses");
   } catch (error) {
-    notify(errorToMessage(error, "Could not load saved addresses. Run the Supabase addresses SQL if this is the first setup."), "error");
+    console.warn("[addresses] saved addresses unavailable:", errorToMessage(error));
     addressCache = [];
   }
   return addressCache;
@@ -1827,6 +1827,7 @@ function addressCard(address) {
 
 async function addressListPage(account) {
   const addresses = await getAddresses(true);
+  const hasAddresses = addresses.length > 0;
   app.innerHTML = `
     <section class="profile-shell narrow address-shell">
       <div class="edit-profile-topbar">
@@ -1834,7 +1835,7 @@ async function addressListPage(account) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
         </a>
         <h1>Addresses</h1>
-        <a class="text-button" href="#/profile/addresses/new">Add</a>
+        <span aria-hidden="true"></span>
       </div>
       <div class="address-hero">
         <div>
@@ -1842,9 +1843,9 @@ async function addressListPage(account) {
           <h2>Saved addresses</h2>
           <p>Choose default delivery details for faster Cash on Delivery checkout.</p>
         </div>
-        <a class="button primary" href="#/profile/addresses/new">Add new address</a>
+        ${hasAddresses ? '<a class="button primary" href="#/profile/addresses/new">Add new address</a>' : ""}
       </div>
-      <div class="address-grid">${addresses.map(addressCard).join("") || '<div class="premium-empty"><h3>No addresses saved</h3><p>Add your first delivery address to speed up checkout.</p><a class="button primary" href="#/profile/addresses/new">Add address</a></div>'}</div>
+      <div class="address-grid">${addresses.map(addressCard).join("") || '<div class="premium-empty address-empty-state"><h3>No saved addresses yet</h3><p>Add one delivery address for faster checkout and smoother Cash on Delivery orders.</p><a class="button primary" href="#/profile/addresses/new">Add address</a></div>'}</div>
     </section>
   `;
 }
@@ -2204,9 +2205,19 @@ async function requestBrowserNotifications() {
     return;
   }
   try {
+    if (Notification.permission === "denied") {
+      prefs.browser = false;
+      saveNotificationPrefs(prefs);
+      showNotificationGuideModal();
+      return;
+    }
     const permission = await Notification.requestPermission();
     prefs.browser = permission === "granted";
     saveNotificationPrefs(prefs);
+    if (permission === "denied") {
+      showNotificationGuideModal();
+      return;
+    }
     notify(permission === "granted" ? "Notifications enabled." : "Notifications paused.", permission === "granted" ? "success" : "info");
   } catch (error) {
     prefs.browser = false;
@@ -2217,7 +2228,12 @@ async function requestBrowserNotifications() {
 
 function maybeShowNotificationPrompt() {
   const prefs = getNotificationPrefs();
-  if (prefs.prompted || !("Notification" in window) || Notification.permission !== "default") return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "denied") {
+    window.addEventListener("click", () => window.setTimeout(showNotificationDeniedBanner, 1400), { once: true });
+    return;
+  }
+  if (prefs.prompted || Notification.permission !== "default") return;
 
   const showPrompt = () => {
     if (getNotificationPrefs().prompted || document.getElementById("notificationPermissionModal")) return;
@@ -2226,9 +2242,9 @@ function maybeShowNotificationPrompt() {
     modal.id = "notificationPermissionModal";
     modal.innerHTML = `
       <section class="notification-permission-modal" role="dialog" aria-modal="true" aria-label="Enable notifications">
-        <p class="eyebrow">Stay in the loop</p>
-        <h2>Enable notifications</h2>
-        <p>Enable notifications to get:</p>
+        <p class="eyebrow">Drop access</p>
+        <h2>Exclusive alerts</h2>
+        <p>Get only the important Urban Kicks updates.</p>
         <ul>
           <li>New sneaker drops</li>
           <li>Flash sales</li>
@@ -2255,6 +2271,51 @@ function maybeShowNotificationPrompt() {
 
   window.setTimeout(showPrompt, 24000);
   window.addEventListener("click", () => window.setTimeout(showPrompt, 1200), { once: true });
+}
+
+function showNotificationDeniedBanner() {
+  if (document.getElementById("notificationDeniedBanner") || Notification.permission !== "denied") return;
+  const banner = document.createElement("div");
+  banner.className = "notification-denied-banner";
+  banner.id = "notificationDeniedBanner";
+  banner.innerHTML = `
+    <div>
+      <strong>Notifications are off</strong>
+      <span>Enable browser permissions to get drops, restocks, and order updates.</span>
+    </div>
+    <button class="button primary" type="button" id="notificationGuideButton">Enable Notifications</button>
+    <button class="notification-dismiss" type="button" id="notificationDismissButton" aria-label="Dismiss notification permissions message">&times;</button>
+  `;
+  document.body.appendChild(banner);
+  window.setTimeout(() => banner.classList.add("show"), 20);
+  document.getElementById("notificationGuideButton")?.addEventListener("click", showNotificationGuideModal);
+  document.getElementById("notificationDismissButton")?.addEventListener("click", () => banner.remove());
+}
+
+function showNotificationGuideModal() {
+  if (document.getElementById("notificationGuideModal")) return;
+  const modal = document.createElement("div");
+  modal.className = "notification-permission-backdrop notification-guide-backdrop";
+  modal.id = "notificationGuideModal";
+  modal.innerHTML = `
+    <section class="notification-permission-modal notification-guide-modal" role="dialog" aria-modal="true" aria-label="Enable browser notifications guide">
+      <p class="eyebrow">Manual permission</p>
+      <h2>Enable notifications</h2>
+      <p>Your browser has blocked notification prompts for Urban Kicks. Turn them back on from site settings.</p>
+      <ol>
+        <li>Tap the lock or tune icon near the address bar.</li>
+        <li>Open Site settings or Permissions.</li>
+        <li>Set Notifications to Allow, then refresh Urban Kicks.</li>
+      </ol>
+      <div class="profile-form-actions">
+        <button class="button primary" type="button" onclick="location.reload()">Refresh after enabling</button>
+        <button class="button light" type="button" id="closeNotificationGuide">Done</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  window.setTimeout(() => modal.classList.add("show"), 20);
+  document.getElementById("closeNotificationGuide")?.addEventListener("click", () => modal.remove());
 }
 
 function setupProfileEditForm() {

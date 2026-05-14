@@ -62,6 +62,17 @@ function validateAddress(payload) {
   return "";
 }
 
+function isMissingAddressTable(error) {
+  const lower = String(error?.message || "").toLowerCase();
+  return lower.includes("addresses") && (lower.includes("schema cache") || lower.includes("could not find") || lower.includes("does not exist"));
+}
+
+function addressSetupResponse(res) {
+  return res.status(503).json({
+    message: "Address book is being prepared. Please try again soon."
+  });
+}
+
 async function clearDefaultAddress(token, userId, exceptId = "") {
   const filter = exceptId
     ? `user_id=eq.${userId}&is_default=eq.true&id=neq.${encodeURIComponent(exceptId)}`
@@ -80,6 +91,10 @@ router.get("/", async (req, res) => {
     const rows = await request(rest("addresses", `select=*&user_id=eq.${auth.user.id}&order=is_default.desc,created_at.desc`), { token: auth.token });
     res.json(rows.map(normalizeAddress));
   } catch (error) {
+    if (isMissingAddressTable(error)) {
+      console.warn("[addresses] table missing in Supabase. Apply supabase/addresses.sql.");
+      return res.json([]);
+    }
     res.status(500).json({ message: "Could not fetch addresses", error: error.message });
   }
 });
@@ -106,6 +121,7 @@ router.post("/", async (req, res) => {
     });
     res.status(201).json(normalizeAddress(rows[0]));
   } catch (error) {
+    if (isMissingAddressTable(error)) return addressSetupResponse(res);
     res.status(400).json({ message: "Could not save address", error: error.message });
   }
 });
@@ -131,6 +147,7 @@ router.patch("/:id", async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: "Address not found" });
     res.json(normalizeAddress(rows[0]));
   } catch (error) {
+    if (isMissingAddressTable(error)) return addressSetupResponse(res);
     res.status(400).json({ message: "Could not update address", error: error.message });
   }
 });
@@ -149,6 +166,7 @@ router.patch("/:id/default", async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: "Address not found" });
     res.json(normalizeAddress(rows[0]));
   } catch (error) {
+    if (isMissingAddressTable(error)) return addressSetupResponse(res);
     res.status(400).json({ message: "Could not set default address", error: error.message });
   }
 });
@@ -163,6 +181,7 @@ router.delete("/:id", async (req, res) => {
     });
     res.json({ message: "Address deleted" });
   } catch (error) {
+    if (isMissingAddressTable(error)) return addressSetupResponse(res);
     res.status(400).json({ message: "Could not delete address", error: error.message });
   }
 });
