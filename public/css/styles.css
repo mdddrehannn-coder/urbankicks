@@ -4953,6 +4953,17 @@ body {
   color: #9aa2ae;
 }
 
+.modern-field input[readonly] {
+  background: #eef1f4;
+  color: #1d232c;
+  cursor: default;
+}
+
+.modern-field input.autofilled {
+  border-color: rgba(16, 185, 129, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.08);
+}
+
 .file-field input {
   padding: 12px;
 }
@@ -5911,6 +5922,58 @@ body.light-mode .account-menu-row:hover .account-arrow {
   opacity: 0.48;
   transform: none;
   box-shadow: none;
+}
+
+.pincode-locality-suggestions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin-top: -4px;
+  padding: 12px;
+  border: 1px solid rgba(12, 13, 16, 0.08);
+  border-radius: 18px;
+  background: #f7f8fa;
+}
+
+.pincode-locality-suggestions[hidden] {
+  display: none;
+}
+
+.pincode-locality-suggestions > span {
+  color: #687181;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.pincode-locality-suggestions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pincode-locality-suggestions button {
+  min-height: 38px;
+  border: 1px solid rgba(12, 13, 16, 0.1);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: #111318;
+  font: 850 0.82rem/1 Inter, Manrope, sans-serif;
+  cursor: pointer;
+  transition: border-color 170ms ease, background 170ms ease, color 170ms ease, transform 170ms ease;
+}
+
+.pincode-locality-suggestions button:hover,
+.pincode-locality-suggestions button:focus,
+.pincode-locality-suggestions button.active {
+  border-color: #08090b;
+  background: #08090b;
+  color: #ffffff;
+  outline: 0;
+}
+
+.pincode-locality-suggestions button:active {
+  transform: scale(0.97);
 }
 
 .sticky-save-bar {

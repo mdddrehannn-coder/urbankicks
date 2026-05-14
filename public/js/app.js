@@ -34,8 +34,7 @@ let wishlistCache = null;
 let addressCache = null;
 let cartCache = null;
 let indiaAddressMeta = null;
-let addressPincodeState = { pincode: "", valid: false, state: "", city: "", message: "" };
-let smartAddressOutsideClickReady = false;
+let addressPincodeState = { pincode: "", valid: false, state: "", city: "", message: "", offices: [] };
 let authRefreshTimer = null;
 let supabaseClient = null;
 let supabaseClientPromise = null;
@@ -2174,18 +2173,18 @@ function addressFormPage(account, mode = "new", id = "") {
         <span aria-hidden="true"></span>
       </div>
       <form class="address-form" id="addressForm" data-address-id="${safe(existing.id || "")}">
+        ${addressFormSection("Address Info", `
+          ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
+          ${addressField("State", "state", existing.state || "", "text", true, "", existing.state ? "readonly" : "")}
+          ${addressField("City", "city", existing.city || "", "text", true, "", existing.city ? "readonly" : "")}
+          ${addressField("Locality / Area / Street", "area", existing.area || "", "text", true)}
+          <div class="pincode-locality-suggestions" id="pincodeLocalitySuggestions" hidden></div>
+          ${addressField("House No / Building", "houseNo", existing.houseNo || "", "text", true)}
+          ${addressField("Landmark (optional)", "landmark", existing.landmark || "", "text", false)}
+        `)}
         ${addressFormSection("Contact Info", `
           ${addressField("Full Name", "fullName", existing.fullName || account.profile.name, "text", true)}
           ${addressField("Phone Number", "phone", existing.phone || account.profile.mobile, "tel", true)}
-          ${addressField("Alternate Phone", "alternatePhone", existing.alternatePhone || "", "tel", false)}
-        `)}
-        ${addressFormSection("Address Info", `
-          ${smartSelectField("State / Union Territory", "state", existing.state || "", "Search state")}
-          ${smartSelectField("City", "city", existing.city || "", "Select state first")}
-          ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
-          ${addressField("Locality / Area / Street", "area", existing.area || "", "text", true)}
-          ${addressField("Flat / House / Building", "houseNo", existing.houseNo || "", "text", true)}
-          ${addressField("Landmark (optional)", "landmark", existing.landmark || "", "text", false)}
         `)}
         <section class="address-form-section">
           <h2>Address Type</h2>
@@ -2206,20 +2205,8 @@ function addressFormSection(title, fields) {
   return `<section class="address-form-section"><h2>${safe(title)}</h2><div class="address-form-grid">${fields}</div></section>`;
 }
 
-function addressField(label, name, value = "", type = "text", required = false, inputmode = "") {
-  return `<label class="modern-field smart-field">${safe(label)}<input name="${name}" type="${type}" value="${safe(value)}" ${required ? "required" : ""} ${inputmode ? `inputmode="${inputmode}"` : ""}><small class="field-error" data-field-error="${name}"></small></label>`;
-}
-
-function smartSelectField(label, name, value = "", placeholder = "Search") {
-  return `
-    <label class="modern-field smart-field smart-select-field" data-smart-select="${name}">
-      ${safe(label)}
-      <input type="hidden" name="${name}" value="${safe(value)}">
-      <input class="smart-select-search" id="${name}Search" type="search" autocomplete="off" value="${safe(value)}" placeholder="${safe(placeholder)}" role="combobox" aria-expanded="false">
-      <div class="smart-select-menu" id="${name}Menu" role="listbox"></div>
-      <small class="field-error" data-field-error="${name}"></small>
-    </label>
-  `;
+function addressField(label, name, value = "", type = "text", required = false, inputmode = "", extraAttrs = "") {
+  return `<label class="modern-field smart-field">${safe(label)}<input name="${name}" type="${type}" value="${safe(value)}" ${required ? "required" : ""} ${inputmode ? `inputmode="${inputmode}"` : ""} ${extraAttrs}><small class="field-error" data-field-error="${name}"></small></label>`;
 }
 
 async function profilePage(section = "overview", action = "", id = "") {
@@ -2645,21 +2632,24 @@ function setupAddressForm() {
   const form = document.getElementById("addressForm");
   form?.addEventListener("submit", saveAddress);
   if (!form) return;
-  setupSmartAddressControls(form);
-  setupSmartAddressOutsideClick();
   setupAddressTypeControls(form);
   form.addEventListener("input", (event) => {
     if (event.target?.name === "pincode") {
       handlePincodeInput(form);
       return;
     }
-    if (["fullName", "phone", "area", "houseNo"].includes(event.target?.name)) {
+    if (["fullName", "phone", "area", "houseNo", "state", "city"].includes(event.target?.name)) {
       clearFieldError(form, event.target.name);
     }
     updateAddressSubmitState(form);
   });
   form.addEventListener("change", () => updateAddressSubmitState(form));
-  if (form.elements.pincode?.value) handlePincodeInput(form);
+  getIndiaAddressMeta().then(() => updateAddressSubmitState(form));
+  if (form.elements.pincode?.value?.length === 6) {
+    validatePincodeWithServer(form, form.elements.pincode.value);
+  } else {
+    setStateCityReadonly(form, Boolean(form.elements.state?.value && form.elements.city?.value));
+  }
   updateAddressSubmitState(form);
 }
 
@@ -2712,176 +2702,6 @@ async function getIndiaAddressMeta() {
   return indiaAddressMeta;
 }
 
-async function setupSmartAddressControls(form) {
-  const states = await getIndiaAddressMeta();
-  const stateNames = Object.keys(states).sort((a, b) => a.localeCompare(b));
-  const setupCitySelect = () => {
-    const state = form.elements.state?.value || "";
-    const cityOptions = states[state] || [];
-    setupSmartSelect(form, "city", cityOptions, (city) => {
-      setSmartSelectValue(form, "city", city);
-      clearFieldError(form, "city");
-      validateSelectedPincodeMatch(form);
-      updateAddressSubmitState(form);
-      window.setTimeout(() => form.elements.pincode?.focus(), 80);
-    });
-    const citySearch = form.querySelector("#citySearch");
-    if (citySearch) {
-      citySearch.disabled = !state;
-      citySearch.placeholder = state ? "Search city" : "Select state first";
-      citySearch.setAttribute("aria-disabled", String(!state));
-    }
-  };
-  const selectedState = getExactOption(Object.keys(states), form.elements.state?.value) || "";
-  if (form.elements.state?.value && !selectedState) {
-    setSmartSelectValue(form, "state", "");
-  }
-  if (selectedState) setSmartSelectValue(form, "state", selectedState);
-
-  setupSmartSelect(form, "state", stateNames, (state) => {
-    setSmartSelectValue(form, "state", state);
-    setSmartSelectValue(form, "city", "");
-    setupCitySelect();
-    clearFieldError(form, "state");
-    clearFieldError(form, "city");
-    validateSelectedPincodeMatch(form);
-    updateAddressSubmitState(form);
-    window.setTimeout(() => form.querySelector("#citySearch")?.focus(), 80);
-  });
-
-  const cityOptions = states[form.elements.state?.value] || [];
-  const selectedCity = getExactOption(cityOptions, form.elements.city?.value) || "";
-  if (form.elements.city?.value && !selectedCity) setSmartSelectValue(form, "city", "");
-  if (selectedCity) setSmartSelectValue(form, "city", selectedCity);
-
-  setupCitySelect();
-  updateAddressSubmitState(form);
-}
-
-function filterSmartOptions(options, query) {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return options.slice(0, 80);
-  const startsWith = options.filter((option) => option.toLowerCase().startsWith(normalizedQuery));
-  const contains = options.filter((option) => (
-    !option.toLowerCase().startsWith(normalizedQuery)
-    && option.toLowerCase().includes(normalizedQuery)
-  ));
-  return [...startsWith, ...contains].slice(0, 80);
-}
-
-function setupSmartSelect(form, name, options, onSelect) {
-  const field = form.querySelector(`[data-smart-select="${name}"]`);
-  const search = field?.querySelector(".smart-select-search");
-  const menu = field?.querySelector(".smart-select-menu");
-  if (!field || !search || !menu) return;
-  let currentOptions = [...options];
-  let highlightedIndex = 0;
-
-  const renderOptions = () => {
-    const query = search.value.trim().toLowerCase();
-    currentOptions = filterSmartOptions(options, query);
-    highlightedIndex = 0;
-    const emptyText = name === "city" && !form.elements.state?.value ? "Select state first" : `No valid ${name === "state" ? "state" : "city"} found`;
-    menu.innerHTML = currentOptions.map((option, index) => `<button class="${index === highlightedIndex ? "highlighted" : ""}" type="button" role="option" data-smart-option="${safe(option)}">${safe(option)}</button>`).join("")
-      || `<span class="smart-select-empty">${emptyText}</span>`;
-    menu.hidden = false;
-    search.setAttribute("aria-expanded", "true");
-  };
-
-  const selectOption = (value) => {
-    const exact = getExactOption(options, value);
-    if (!exact) return false;
-    onSelect(exact);
-    search.value = exact;
-    form.elements[name].value = exact;
-    menu.hidden = true;
-    search.setAttribute("aria-expanded", "false");
-    return true;
-  };
-
-  search.onfocus = renderOptions;
-  search.oninput = () => {
-    form.elements[name].value = "";
-    clearFieldError(form, name);
-    renderOptions();
-    updateAddressSubmitState(form);
-  };
-  search.onkeydown = (event) => {
-    if (event.key === "ArrowDown" && currentOptions.length) {
-      event.preventDefault();
-      highlightedIndex = Math.min(highlightedIndex + 1, currentOptions.length - 1);
-      renderHighlightedOption(menu, highlightedIndex);
-    }
-    if (event.key === "ArrowUp" && currentOptions.length) {
-      event.preventDefault();
-      highlightedIndex = Math.max(highlightedIndex - 1, 0);
-      renderHighlightedOption(menu, highlightedIndex);
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      if (menu.hidden) renderOptions();
-      const exactTyped = getExactOption(options, search.value);
-      const selected = exactTyped || currentOptions[highlightedIndex] || currentOptions[0] || "";
-      if (!selectOption(selected)) {
-        setFieldError(form, name, name === "state" ? "Select a valid state" : "Select a valid city");
-        updateAddressSubmitState(form);
-      }
-    }
-    if (event.key === "Escape") {
-      menu.hidden = true;
-      search.setAttribute("aria-expanded", "false");
-    }
-  };
-  search.onblur = () => {
-    window.setTimeout(() => {
-      if (menu.contains(document.activeElement)) return;
-      const exact = getExactOption(options, search.value);
-      if (exact) {
-        selectOption(exact);
-      } else if (search.value.trim() || form.elements[name].value) {
-        setSmartSelectValue(form, name, "");
-        setFieldError(form, name, name === "state" ? "Select a valid state" : "Select a valid city");
-      }
-      updateAddressSubmitState(form);
-    }, 120);
-  };
-  menu.onmousedown = (event) => {
-    const option = event.target.closest("[data-smart-option]");
-    if (!option) return;
-    event.preventDefault();
-    selectOption(option.dataset.smartOption || "");
-  };
-  menu.hidden = true;
-}
-
-function renderHighlightedOption(menu, index) {
-  menu.querySelectorAll("[data-smart-option]").forEach((button, buttonIndex) => {
-    button.classList.toggle("highlighted", buttonIndex === index);
-    if (buttonIndex === index) button.scrollIntoView({ block: "nearest" });
-  });
-}
-
-function setupSmartAddressOutsideClick() {
-  if (smartAddressOutsideClickReady) return;
-  smartAddressOutsideClickReady = true;
-  document.addEventListener("click", (event) => {
-    document.querySelectorAll(".smart-select-field").forEach((field) => {
-      if (field.contains(event.target)) return;
-      const menu = field.querySelector(".smart-select-menu");
-      const search = field.querySelector(".smart-select-search");
-      if (menu) menu.hidden = true;
-      search?.setAttribute("aria-expanded", "false");
-    });
-  });
-}
-
-function setSmartSelectValue(form, name, value) {
-  if (!form.elements[name]) return;
-  form.elements[name].value = value;
-  const search = form.querySelector(`#${name}Search`);
-  if (search) search.value = value;
-}
-
 function normalizeSmartText(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
 }
@@ -2925,14 +2745,73 @@ function clearFieldError(form, name) {
   setFieldError(form, name, "");
 }
 
+function setFieldStatus(form, name, message) {
+  const error = form.querySelector(`[data-field-error="${name}"]`);
+  if (error) error.textContent = message || "";
+  form.elements[name]?.classList?.remove("invalid");
+}
+
+function setStateCityReadonly(form, readonly) {
+  ["state", "city"].forEach((name) => {
+    const field = form.elements[name];
+    if (!field) return;
+    field.readOnly = readonly;
+    field.classList.toggle("autofilled", readonly && Boolean(field.value));
+  });
+}
+
+function clearLocalitySuggestions(form) {
+  const box = form.querySelector("#pincodeLocalitySuggestions");
+  if (!box) return;
+  box.hidden = true;
+  box.innerHTML = "";
+}
+
+function renderLocalitySuggestions(form, offices = []) {
+  const box = form.querySelector("#pincodeLocalitySuggestions");
+  if (!box) return;
+  const localities = [...new Set(offices.map((office) => office.name).filter(Boolean))];
+  if (!localities.length) {
+    clearLocalitySuggestions(form);
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = `
+    <span>Select locality</span>
+    <div>${localities.map((name) => `<button type="button" data-locality="${safe(name)}">${safe(name)}</button>`).join("")}</div>
+  `;
+  box.querySelectorAll("[data-locality]").forEach((button) => {
+    button.addEventListener("click", () => {
+      form.elements.area.value = button.dataset.locality || "";
+      clearFieldError(form, "area");
+      box.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+      updateAddressSubmitState(form);
+      window.setTimeout(() => form.elements.houseNo?.focus(), 80);
+    });
+  });
+  if (!String(form.elements.area?.value || "").trim()) {
+    const first = box.querySelector("[data-locality]");
+    if (first) {
+      form.elements.area.value = first.dataset.locality || "";
+      first.classList.add("active");
+    }
+  }
+}
+
 function handlePincodeInput(form) {
   const input = form.elements.pincode;
   const rawValue = String(input.value || "");
   input.value = rawValue.replace(/\D/g, "").slice(0, 6);
   clearFieldError(form, "pincode");
-  addressPincodeState = { pincode: input.value, valid: false, state: "", city: "", message: "" };
+  addressPincodeState = { pincode: input.value, valid: false, state: "", city: "", message: "", offices: [] };
+  clearLocalitySuggestions(form);
   if ((rawValue && !input.value) || (input.value && input.value.length < 6)) {
     setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+  }
+  if (input.value.length < 6) {
+    setStateCityReadonly(form, false);
+    form.elements.state.value = "";
+    form.elements.city.value = "";
   }
   if (input.value.length === 6) validatePincodeWithServer(form, input.value);
   updateAddressSubmitState(form);
@@ -2940,39 +2819,52 @@ function handlePincodeInput(form) {
 
 async function validatePincodeWithServer(form, pincode) {
   if (!/^\d{6}$/.test(String(pincode || ""))) {
-    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code" };
+    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code", offices: [] };
     setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+    setStateCityReadonly(form, false);
     updateAddressSubmitState(form);
     return false;
   }
-  setFieldError(form, "pincode", "Checking PIN code...");
+  setFieldStatus(form, "pincode", "Checking PIN code...");
   try {
     const result = await api(`/api/addresses/pincode/${pincode}`);
+    if (form.elements.pincode.value !== pincode) return false;
+    if (result.lookupFailed) {
+      addressPincodeState = { pincode, valid: true, state: "", city: "", message: result.message || "", offices: [], manual: true };
+      setFieldStatus(form, "pincode", result.message || "Enter state and city manually.");
+      setStateCityReadonly(form, false);
+      clearLocalitySuggestions(form);
+      updateAddressSubmitState(form);
+      window.setTimeout(() => form.elements.state?.focus(), 80);
+      return true;
+    }
+    const offices = Array.isArray(result.offices) ? result.offices : [];
     addressPincodeState = {
       pincode,
       valid: true,
       state: result.state || "",
       city: result.city || "",
-      message: ""
+      message: "",
+      offices
     };
     clearFieldError(form, "pincode");
-    if (result.state) setSmartSelectValue(form, "state", result.state);
-    if (result.state && result.city) {
-      indiaAddressMeta[result.state] = indiaAddressMeta[result.state] || [];
-      if (!indiaAddressMeta[result.state].some((city) => city.toLowerCase() === result.city.toLowerCase())) {
-        indiaAddressMeta[result.state] = [result.city, ...indiaAddressMeta[result.state]];
-      }
-    }
-    await setupSmartAddressControls(form);
-    const cityOptions = (indiaAddressMeta || {})[result.state] || [];
-    const city = cityOptions.find((item) => item.toLowerCase() === String(result.city || "").toLowerCase()) || cityOptions[0] || result.city || "";
-    if (city) setSmartSelectValue(form, "city", city);
-    validateSelectedPincodeMatch(form);
+    form.elements.state.value = result.state || "";
+    form.elements.city.value = result.city || "";
+    setStateCityReadonly(form, Boolean(result.state && result.city));
+    renderLocalitySuggestions(form, offices);
+    clearFieldError(form, "state");
+    clearFieldError(form, "city");
     updateAddressSubmitState(form);
+    window.setTimeout(() => {
+      if (form.elements.area?.value) form.elements.houseNo?.focus();
+      else form.elements.area?.focus();
+    }, 100);
     return true;
   } catch (error) {
-    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code" };
+    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code", offices: [] };
     setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+    setStateCityReadonly(form, false);
+    clearLocalitySuggestions(form);
     updateAddressSubmitState(form);
     return false;
   }
@@ -2980,13 +2872,16 @@ async function validatePincodeWithServer(form, pincode) {
 
 function validateSelectedPincodeMatch(form) {
   if (!addressPincodeState.pincode || addressPincodeState.pincode.length !== 6 || !addressPincodeState.valid) return true;
-  const selectedState = form.elements.state.value;
-  const selectedCity = form.elements.city.value;
-  if (selectedState && addressPincodeState.state && selectedState !== addressPincodeState.state) {
+  const selectedState = String(form.elements.state.value || "").trim();
+  const selectedCity = String(form.elements.city.value || "").trim();
+  if (selectedState && addressPincodeState.state && normalizeSmartText(selectedState) !== normalizeSmartText(addressPincodeState.state)) {
     setFieldError(form, "state", "PIN code does not match selected state");
     return false;
   }
-  if (selectedCity && addressPincodeState.city && selectedCity.toLowerCase() !== addressPincodeState.city.toLowerCase()) {
+  const cityMatches = !selectedCity || !addressPincodeState.city
+    || normalizeSmartText(selectedCity) === normalizeSmartText(addressPincodeState.city)
+    || (addressPincodeState.offices || []).some((office) => normalizeSmartText(office.city) === normalizeSmartText(selectedCity));
+  if (!cityMatches) {
     setFieldError(form, "city", "PIN code does not match selected city");
     return false;
   }
@@ -3002,14 +2897,14 @@ async function getAddressFormPayload(form) {
   const pincode = String(data.pincode || "").replace(/\D/g, "");
   const states = await getIndiaAddressMeta();
   const validState = getExactOption(Object.keys(states), data.state);
-  const validCity = getExactOption(states[validState] || [], data.city);
+  const city = String(data.city || "").trim();
   clearAddressValidationErrors(form);
   if (!String(data.fullName || "").trim()) setFieldError(form, "fullName", "Full name is required");
   if (!phone) setFieldError(form, "phone", "Enter a valid phone number");
   if (alternatePhone === "" && data.alternatePhone) setFieldError(form, "alternatePhone", "Enter a valid alternate phone number");
   if (!/^\d{6}$/.test(pincode)) setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
   if (!validState) setFieldError(form, "state", "Select a valid state");
-  if (!validCity) setFieldError(form, "city", validState ? "Select a valid city" : "Select a valid state first");
+  if (!city) setFieldError(form, "city", "City is required");
   ["area", "houseNo"].forEach((field) => {
     if (!String(data[field] || "").trim()) setFieldError(form, field, `${field === "houseNo" ? "Flat / House / Building" : "Locality / Area / Street"} is required`);
   });
@@ -3030,7 +2925,7 @@ async function getAddressFormPayload(form) {
     phone,
     alternatePhone,
     pincode,
-    city: validCity,
+    city,
     state: validState,
     area: String(data.area).trim(),
     houseNo: String(data.houseNo).trim(),
@@ -3050,14 +2945,13 @@ function updateAddressSubmitState(form) {
   const state = form.elements.state?.value || "";
   const city = form.elements.city?.value || "";
   const stateOptions = Object.keys(indiaAddressMeta || {});
-  const cityOptions = state && indiaAddressMeta ? indiaAddressMeta[state] || [] : [];
   const requiredReady = Boolean(
     String(form.elements.fullName?.value || "").trim()
     && normalizePhoneNumber(form.elements.phone?.value || "")
     && String(form.elements.houseNo?.value || "").trim()
     && String(form.elements.area?.value || "").trim()
     && getExactOption(stateOptions, state)
-    && getExactOption(cityOptions, city)
+    && String(city || "").trim()
     && /^\d{6}$/.test(String(form.elements.pincode?.value || ""))
     && addressPincodeState.pincode === String(form.elements.pincode?.value || "")
     && addressPincodeState.valid

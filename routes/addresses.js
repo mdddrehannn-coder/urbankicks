@@ -8,6 +8,14 @@ const {
 
 const router = express.Router();
 
+function canonicalStateName(value) {
+  const normalized = normalizeAddressText(value).replace(/\band\b/g, "").replace(/\s+/g, " ").trim();
+  return Object.keys(INDIA_STATE_CITIES).find((state) => {
+    const stateNormalized = normalizeAddressText(state).replace(/\band\b/g, "").replace(/\s+/g, " ").trim();
+    return stateNormalized === normalized;
+  }) || String(value || "").trim();
+}
+
 async function requireUser(req, res) {
   const token = getBearerToken(req);
   const user = await getAuthUser(token).catch(() => null);
@@ -71,25 +79,32 @@ async function lookupPincode(pincode) {
       return { valid: false, message: "Enter a valid 6-digit Indian PIN code" };
     }
     const primary = offices[0];
+    const state = canonicalStateName(primary.State || "");
     return {
       valid: true,
       pincode,
-      state: primary.State || "",
+      state,
       city: primary.District || primary.Block || primary.Name || "",
       district: primary.District || "",
       offices: offices.map((office) => ({
         name: office.Name || "",
         city: office.District || office.Block || office.Name || "",
-        state: office.State || ""
+        state: canonicalStateName(office.State || "")
       }))
     };
   } catch (error) {
     console.warn("[addresses] pincode lookup failed:", error.message);
-    return { valid: false, message: "Enter a valid 6-digit Indian PIN code" };
+    return {
+      valid: false,
+      lookupFailed: true,
+      pincode,
+      message: "Could not verify PIN code. Enter state and city manually."
+    };
   }
 }
 
 function pincodeMatchesAddress(pincodeInfo, payload) {
+  if (pincodeInfo.lookupFailed) return "";
   if (!pincodeInfo.valid) return pincodeInfo.message;
   const stateMatches = normalizeAddressText(pincodeInfo.state) === normalizeAddressText(payload.state);
   const cityMatches = pincodeInfo.offices.some((office) => (
@@ -158,7 +173,7 @@ router.get("/india-meta", (_req, res) => {
 
 router.get("/pincode/:pincode", async (req, res) => {
   const result = await lookupPincode(String(req.params.pincode || "").replace(/\D/g, ""));
-  res.status(result.valid ? 200 : 400).json(result);
+  res.status(result.valid || result.lookupFailed ? 200 : 400).json(result);
 });
 
 router.post("/", async (req, res) => {
