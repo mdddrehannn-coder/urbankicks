@@ -9,6 +9,8 @@ create table if not exists public.addresses (
   pincode text not null,
   state text not null,
   city text not null,
+  locality text,
+  address_line text,
   area text not null,
   house_no text not null,
   landmark text,
@@ -17,6 +19,19 @@ create table if not exists public.addresses (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.addresses add column if not exists locality text;
+alter table public.addresses add column if not exists address_line text;
+alter table public.addresses add column if not exists area text;
+alter table public.addresses add column if not exists house_no text;
+
+update public.addresses
+set
+  locality = coalesce(nullif(locality, ''), nullif(area, ''), locality),
+  address_line = coalesce(nullif(address_line, ''), nullif(house_no, ''), address_line),
+  area = coalesce(nullif(area, ''), nullif(locality, ''), area),
+  house_no = coalesce(nullif(house_no, ''), nullif(address_line, ''), house_no)
+where locality is null or locality = '' or address_line is null or address_line = '' or area is null or area = '' or house_no is null or house_no = '';
 
 create index if not exists addresses_user_id_idx on public.addresses(user_id);
 create index if not exists addresses_user_default_idx on public.addresses(user_id, is_default desc);

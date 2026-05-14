@@ -37,6 +37,28 @@ function legacyProfilePayload(user, body = {}) {
   };
 }
 
+function publicProfilePayload(user, body = {}) {
+  const payload = profilePayload(user, body);
+  return {
+    id: payload.id,
+    full_name: payload.full_name,
+    email: payload.email,
+    phone: payload.phone_number
+  };
+}
+
+async function syncPublicProfile(token, user, body = {}) {
+  return request("/rest/v1/profiles", {
+    method: "POST",
+    token,
+    headers: { ...preferReturn(), Prefer: "resolution=merge-duplicates,return=representation" },
+    body: publicProfilePayload(user, body)
+  }).catch((error) => {
+    console.warn("[auth] profiles sync skipped:", error.message);
+    return [];
+  });
+}
+
 async function signupHandler(req, res) {
   res.status(410).json({
     message: "Direct API account creation is disabled. Urban Kicks uses browser Supabase signup with email OTP verification."
@@ -94,6 +116,7 @@ router.post("/profile", async (req, res) => {
         body: legacyProfilePayload(user, req.body)
       });
     }
+    await syncPublicProfile(token, user, req.body);
 
     console.log(`[auth] profile synced for ${user.email || user.id}`);
     res.status(201).json(rows[0] || profilePayload(user, req.body));
@@ -123,7 +146,11 @@ router.get("/me", async (req, res) => {
     const token = getBearerToken(req);
     const user = await getAuthUser(token);
     if (!user) return res.status(401).json({ message: "Not authenticated" });
-    const profiles = await request(`/rest/v1/users?select=*&id=eq.${user.id}&limit=1`, { token }).catch((profileError) => {
+    const publicProfiles = await request(`/rest/v1/profiles?select=*&id=eq.${user.id}&limit=1`, { token }).catch((profileError) => {
+      console.warn("[auth] profiles read skipped:", profileError.message);
+      return [];
+    });
+    const profiles = publicProfiles.length ? publicProfiles : await request(`/rest/v1/users?select=*&id=eq.${user.id}&limit=1`, { token }).catch((profileError) => {
       console.error(profileError);
       console.warn("[auth] profile read skipped:", profileError.message);
       return [];

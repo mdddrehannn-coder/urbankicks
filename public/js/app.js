@@ -32,6 +32,7 @@ window.scrollTo(0, 0);
 let catalogCache = null;
 let wishlistCache = null;
 let addressCache = null;
+let cartCache = null;
 let indiaAddressMeta = null;
 let addressPincodeState = { pincode: "", valid: false, state: "", city: "", message: "" };
 let smartAddressOutsideClickReady = false;
@@ -54,6 +55,7 @@ let emailAuthState = {
 };
 let checkoutSelectedAddressId = "";
 let checkoutPaymentMethod = "cod";
+let orderInFlight = false;
 
 const PAYMENT_METHODS = {
   cod: {
@@ -305,6 +307,7 @@ function getSession() {
 function setSession(session) {
   if (!session) {
     localStorage.removeItem(SESSION_KEY);
+    cartCache = null;
     renderCounters();
     return;
   }
@@ -393,6 +396,7 @@ async function getSupabaseClient() {
 async function syncSessionFromSupabase(session) {
   setSession(session);
   wishlistCache = null;
+  await migrateLocalCartToSupabase();
   await renderCounters();
 }
 
@@ -441,6 +445,7 @@ async function refreshSession() {
     console.warn("[auth] session refresh failed", error.message);
     localStorage.removeItem(SESSION_KEY);
     wishlistCache = null;
+    cartCache = null;
     renderCounters();
   }
 }
@@ -457,11 +462,13 @@ async function verifySession() {
     }
     localStorage.removeItem(SESSION_KEY);
     wishlistCache = null;
+    cartCache = null;
     await renderCounters();
   } catch (error) {
     console.warn("[auth] session restore failed", error.message);
     localStorage.removeItem(SESSION_KEY);
     wishlistCache = null;
+    cartCache = null;
     await renderCounters();
   }
 }
@@ -475,6 +482,7 @@ async function setupAuthStateListener() {
     } else {
       localStorage.removeItem(SESSION_KEY);
       wishlistCache = null;
+      cartCache = null;
       await renderCounters();
     }
     window.dispatchEvent(new CustomEvent("urban-kicks-auth", { detail: { event, session } }));
@@ -482,12 +490,45 @@ async function setupAuthStateListener() {
   window.urbanKicksAuthSubscription = data?.subscription;
 }
 
-function getCart() {
+function getLocalCart() {
   return getStore(CART_KEY, []);
 }
 
-function saveCart(cart) {
+function saveLocalCart(cart) {
   setStore(CART_KEY, cart);
+}
+
+async function getCart(force = false) {
+  if (!getSession()) return getLocalCart();
+  if (cartCache && !force) return cartCache;
+  try {
+    cartCache = await api("/api/cart");
+  } catch (error) {
+    console.warn("[cart] saved cart unavailable:", errorToMessage(error));
+    cartCache = [];
+  }
+  return cartCache;
+}
+
+async function migrateLocalCartToSupabase() {
+  if (!getSession()) return;
+  const localCart = getLocalCart();
+  if (!localCart.length) return;
+  try {
+    await Promise.all(localCart.map((item) => api("/api/cart", {
+      method: "POST",
+      body: JSON.stringify({
+        productId: item.productId,
+        size: item.size,
+        color: item.color,
+        quantity: item.quantity
+      })
+    })));
+    localStorage.removeItem(CART_KEY);
+    cartCache = null;
+  } catch (error) {
+    console.warn("[cart] local cart sync skipped:", errorToMessage(error));
+  }
 }
 
 function localWishlist() {
@@ -518,7 +559,8 @@ async function getAddresses(force = false) {
 }
 
 async function renderCounters() {
-  const cartTotal = getCart().reduce((sum, item) => sum + item.quantity, 0);
+  const cartItems = await getCart();
+  const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   cartCount.textContent = cartTotal;
   [mobileCartCount, mobileHeaderCartCount].forEach((badge) => {
     if (!badge) return;
@@ -940,24 +982,38 @@ async function addToCart(id) {
   }
   const size = document.querySelector("input[name='size']:checked")?.value || product.sizes[0];
   const color = document.querySelector("input[name='color']:checked")?.value || product.color;
-  const cart = getCart();
-  const existing = cart.find((item) => item.productId === id && item.size === size && item.color === color);
-  if (existing) existing.quantity += 1;
-  else {
-    cart.push({
-      productId: id,
-      name: product.name,
-      brand: product.brand,
-      price: salePrice(product),
-      originalPrice: product.price,
-      imageUrl: product.imageUrl,
-      size,
-      color,
-      quantity: 1
-    });
+  if (getSession()) {
+    try {
+      await api("/api/cart", {
+        method: "POST",
+        body: JSON.stringify({ productId: id, size, color, quantity: 1 })
+      });
+      cartCache = null;
+    } catch (error) {
+      notify(errorToMessage(error, "Could not add item to bag."), "error");
+      return;
+    }
+  } else {
+    const cart = getLocalCart();
+    const existing = cart.find((item) => item.productId === id && item.size === size && item.color === color);
+    if (existing) existing.quantity += 1;
+    else {
+      cart.push({
+        productId: id,
+        name: product.name,
+        brand: product.brand,
+        price: salePrice(product),
+        originalPrice: product.price,
+        imageUrl: product.imageUrl,
+        size,
+        color,
+        quantity: 1
+      });
+    }
+    saveLocalCart(cart);
   }
-  saveCart(cart);
-  notify(`${product.name} added to cart.`, "success");
+  await renderCounters();
+  notify(`${product.name} added to bag.`, "success");
 }
 
 async function quickAdd(id) {
@@ -1008,8 +1064,8 @@ function summaryPanel(totals, checkout = true) {
   `;
 }
 
-function cartPage() {
-  const cart = getCart();
+async function cartPage() {
+  const cart = await getCart(true);
   const totals = cartTotals(cart);
   if (!cart.length) return emptyPage("Your cart is empty", "Pick a pair and it will land here.");
   app.innerHTML = `
@@ -1039,23 +1095,54 @@ function cartPage() {
   `;
 }
 
-function changeQty(index, delta) {
-  const cart = getCart();
-  cart[index].quantity += delta;
-  if (cart[index].quantity < 1) cart.splice(index, 1);
-  saveCart(cart);
+async function changeQty(index, delta) {
+  const cart = await getCart();
+  const item = cart[index];
+  if (!item) return;
+  const nextQuantity = Number(item.quantity || 1) + delta;
+  if (getSession()) {
+    try {
+      if (nextQuantity < 1) await api(`/api/cart/${item.id}`, { method: "DELETE" });
+      else await api(`/api/cart/${item.id}`, { method: "PATCH", body: JSON.stringify({ quantity: nextQuantity }) });
+      cartCache = null;
+    } catch (error) {
+      notify(errorToMessage(error, "Could not update bag."), "error");
+    }
+  } else {
+    item.quantity = nextQuantity;
+    if (item.quantity < 1) cart.splice(index, 1);
+    saveLocalCart(cart);
+  }
+  await renderCounters();
   cartPage();
 }
 
-function removeItem(index) {
-  const cart = getCart();
-  cart.splice(index, 1);
-  saveCart(cart);
+async function removeItem(index) {
+  const cart = await getCart();
+  const item = cart[index];
+  if (!item) return;
+  if (getSession()) {
+    try {
+      await api(`/api/cart/${item.id}`, { method: "DELETE" });
+      cartCache = null;
+    } catch (error) {
+      notify(errorToMessage(error, "Could not remove item."), "error");
+    }
+  } else {
+    cart.splice(index, 1);
+    saveLocalCart(cart);
+  }
+  await renderCounters();
   cartPage();
 }
 
 async function checkoutPage() {
-  const cart = getCart();
+  if (!getSession()) {
+    notify("Login to place an order.", "info");
+    location.hash = "#/auth";
+    return;
+  }
+  const cart = await getCart(true);
   if (!cart.length) return cartPage();
   const totals = cartTotals(cart);
   const addresses = await getAddresses();
@@ -1224,6 +1311,12 @@ function selectCheckoutAddress(id) {
 
 async function placeOrder(event) {
   event.preventDefault();
+  if (orderInFlight) return;
+  if (!getSession()) {
+    notify("Login to place an order.", "error");
+    location.hash = "#/auth";
+    return;
+  }
   const form = event.target;
   const button = form.querySelector("button[type='submit']");
   const data = Object.fromEntries(new FormData(form));
@@ -1231,20 +1324,27 @@ async function placeOrder(event) {
     showUpiComingSoonModal();
     return;
   }
+  if (!data.address_id) {
+    notify("Select or add a saved delivery address first.", "error");
+    return;
+  }
+  orderInFlight = true;
   setButtonLoading(button, true, "Placing COD order...");
   try {
     const order = await api("/api/orders", {
       method: "POST",
-      body: JSON.stringify({ customer: data, items: getCart(), paymentMethod: "cod" })
+      body: JSON.stringify({ addressId: data.address_id, paymentMethod: "cod" })
     });
+    cartCache = [];
     localStorage.removeItem(CART_KEY);
     catalogCache = null;
-    renderCounters();
+    await renderCounters();
     notify("COD order placed successfully.", "success");
     location.hash = `#/confirmation/${order._id}`;
   } catch (error) {
     showAuthError(error, error.message || "Could not place order.");
   } finally {
+    orderInFlight = false;
     setButtonLoading(button, false);
   }
 }
@@ -1926,6 +2026,7 @@ async function logout() {
   if (authRefreshTimer) clearTimeout(authRefreshTimer);
   wishlistCache = null;
   addressCache = null;
+  cartCache = null;
   renderCounters();
   window.dispatchEvent(new CustomEvent("urban-kicks-auth", { detail: { event: "SIGNED_OUT", session: null } }));
   notify("You have been logged out.", "success");
@@ -1938,7 +2039,7 @@ function normalizeProfile(session, profile = {}) {
     id: session.user?.id,
     name: profile.full_name || profile.name || metadata.full_name || metadata.name || "Urban Kicks Member",
     email: profile.email || session.user?.email || "",
-    mobile: profile.phone_number || profile.mobile || metadata.phone_number || metadata.mobile || session.user?.phone || "",
+    mobile: profile.phone || profile.phone_number || profile.mobile || metadata.phone_number || metadata.mobile || session.user?.phone || "",
     image: profile.profile_image || metadata.profile_image || ""
   };
 }
@@ -2136,7 +2237,7 @@ async function profilePage(section = "overview", action = "", id = "") {
   }
   if (section === "addresses") return addressListPage(account);
   if (section !== "overview") return profileSectionPage(account, section);
-  const cartItems = getCart();
+  const cartItems = await getCart();
   const delivered = account.orders.filter((order) => order.status === "Delivered").length;
   const cancelled = account.orders.filter((order) => order.status === "Cancelled").length;
   const latestOrders = account.orders.slice(0, 3);
@@ -3117,6 +3218,7 @@ async function logoutAllDevices() {
     if (error) throw error;
     localStorage.removeItem(SESSION_KEY);
     wishlistCache = null;
+    cartCache = null;
     renderCounters();
     notify("Logged out from all devices.", "success");
     location.hash = "#/";
@@ -3427,7 +3529,7 @@ function toggleTheme() {
 }
 
 async function router() {
-  renderCounters();
+  await renderCounters();
   closeNav();
   const routeKey = location.hash || "#/";
   const shouldResetScroll = routeKey !== lastRouteKey;

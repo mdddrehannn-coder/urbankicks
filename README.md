@@ -6,7 +6,7 @@ Urban Kicks is an online shoe selling ecommerce website powered by Node.js, Expr
 
 - Node.js + Express backend
 - Supabase Auth for signup, login, logout, and persistent sessions
-- Supabase database tables for users, products, wishlist, orders, and transactions
+- Supabase database tables for profiles, addresses, cart items, orders, order items, wishlist, products, and transactions
 - Mobile-first HTML/CSS/JavaScript SPA frontend
 - Cash on Delivery checkout only
 
@@ -71,7 +71,8 @@ Open `http://localhost:5000`.
 - Supabase email templates must show `{{ .Token }}` only and must not include clickable authentication URLs. See `supabase/email-otp-template.md`.
 - Supabase Auth must allow new user signups for OTP signup to work. If Supabase returns `Signup not allowed for OTP`, enable signups/email OTP in the Supabase Authentication settings.
 - `GET /api/wishlist`, `POST /api/wishlist`, `DELETE /api/wishlist/:productId` sync wishlist.
-- `POST /api/orders` creates a Cash on Delivery order and transaction record.
+- `GET /api/cart`, `POST /api/cart`, `PATCH /api/cart/:id`, `DELETE /api/cart/:id` sync logged-in user cart rows.
+- `POST /api/orders` creates a Cash on Delivery order from the logged-in user's Supabase cart, writes related `order_items`, clears `cart_items`, and creates a transaction record.
 - `GET /api/orders/mine` shows user order history.
 - `GET /api/transactions` shows user transaction records.
 
@@ -80,9 +81,13 @@ Open `http://localhost:5000`.
 The required tables are defined in `supabase/schema.sql`:
 
 - `users`
+- `profiles`
 - `products`
 - `wishlist`
+- `addresses`
+- `cart_items`
 - `orders`
+- `order_items`
 - `transactions`
 
 The schema includes an auth trigger that creates a matching `public.users` profile whenever Supabase Auth creates a new account. Run the latest `supabase/schema.sql` in Supabase SQL Editor after auth changes.
