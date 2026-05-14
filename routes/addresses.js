@@ -57,7 +57,7 @@ function addressPayload(body, userId) {
 
 async function lookupPincode(pincode) {
   if (!/^\d{6}$/.test(String(pincode || ""))) {
-    return { valid: false, message: "Invalid Indian PIN code" };
+    return { valid: false, message: "Enter a valid 6-digit Indian PIN code" };
   }
 
   try {
@@ -66,7 +66,7 @@ async function lookupPincode(pincode) {
     const result = Array.isArray(data) ? data[0] : null;
     const offices = Array.isArray(result?.PostOffice) ? result.PostOffice : [];
     if (result?.Status !== "Success" || !offices.length) {
-      return { valid: false, message: "Invalid Indian PIN code" };
+      return { valid: false, message: "Enter a valid 6-digit Indian PIN code" };
     }
     const primary = offices[0];
     return {
@@ -83,7 +83,7 @@ async function lookupPincode(pincode) {
     };
   } catch (error) {
     console.warn("[addresses] pincode lookup failed:", error.message);
-    return { valid: false, message: "Could not verify this PIN code. Please try again." };
+    return { valid: false, message: "Enter a valid 6-digit Indian PIN code" };
   }
 }
 
@@ -102,7 +102,7 @@ function pincodeMatchesAddress(pincodeInfo, payload) {
 async function validateAddress(payload) {
   if (!payload.full_name) return "Full name is required";
   if (!/^\+?\d{10,15}$/.test(payload.phone.replace(/[^\d+]/g, ""))) return "Enter a valid phone number";
-  if (!/^\d{6}$/.test(payload.pincode)) return "Enter a valid 6-digit pincode";
+  if (!/^\d{6}$/.test(payload.pincode)) return "Enter a valid 6-digit Indian PIN code";
   if (!isKnownState(payload.state)) return "Choose a valid Indian state";
   if (!payload.city) return "City is required";
   if (!payload.state) return "State is required";

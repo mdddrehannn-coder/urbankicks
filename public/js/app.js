@@ -530,8 +530,13 @@ function updateMobileAccountLink() {
 function getMobileNavState() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   const root = parts[0] || "home";
-  const profileSubpages = new Set(["edit", "orders", "addresses", "payments", "notifications", "settings", "security"]);
-  const shouldHide = (root === "profile" && profileSubpages.has(parts[1])) || root === "settings" || root === "help";
+  const mainTabRoute = !parts.length
+    || (root === "categories" && parts.length === 1)
+    || (root === "wishlist" && parts.length === 1)
+    || (root === "cart" && parts.length === 1)
+    || (root === "profile" && parts.length === 1)
+    || (root === "auth" && parts.length <= 1);
+  const shouldHide = !mainTabRoute;
   const activeKey = root === "cart" ? "cart"
     : root === "wishlist" ? "wishlist"
       : root === "categories" || root === "category" || root === "brand" ? "categories"
@@ -1810,6 +1815,7 @@ function accountIcon(title) {
     Addresses: "M12 21s6-5.2 6-10.1A6 6 0 1 0 6 10.9C6 15.8 12 21 12 21Zm0-8.1a2 2 0 1 1 0-4.1 2 2 0 0 1 0 4.1Z",
     "Payment Methods": "M4 6.5h16v11H4v-11Zm1.8 3H18.2V8.2H5.8v1.3Zm0 2v4.2H18.2v-4.2H5.8Z",
     Notifications: "M12 21a2.3 2.3 0 0 0 2.2-1.7H9.8A2.3 2.3 0 0 0 12 21Zm-5.9-3.5h11.8l-1.4-1.8v-4.3a4.5 4.5 0 0 0-3.5-4.5V5a1 1 0 1 0-2 0v1.9a4.5 4.5 0 0 0-3.5 4.5v4.3l-1.4 1.8Z",
+    "Privacy & Data": "M12 21c4-1.7 6-4.6 6-8.7V6.5L12 4 6 6.5v5.8c0 4.1 2 7 6 8.7Zm0-4.4a2.8 2.8 0 0 0 2.8-2.8v-2.1h.6V9.9h-1V8.8a2.4 2.4 0 0 0-4.8 0v1.1h-1v1.8h.6v2.1a2.8 2.8 0 0 0 2.8 2.8Zm-1-6.7V8.8a1 1 0 0 1 2 0v1.1h-2Z",
     Security: "M12 21c4-1.7 6-4.6 6-8.7V6.5L12 4 6 6.5v5.8c0 4.1 2 7 6 8.7Zm-.7-5 4.1-4.9-1.4-1.1-2.9 3.5-1.2-1.3-1.3 1.2 2.7 2.6Z",
     Settings: "M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8Z",
     "Help & Support": "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm-.9-5.8c0-1.2.6-1.9 1.6-2.6.8-.6 1.2-.9 1.2-1.6 0-.8-.7-1.3-1.7-1.3-1 0-1.8.5-2.4 1.3L8.5 8.8A4.4 4.4 0 0 1 12.3 7c2.1 0 3.5 1.1 3.5 2.8 0 1.4-.7 2.1-1.9 2.9-.8.6-1.1.9-1.1 1.6h-1.7Zm-.1 3h2v-2h-2v2Z",
@@ -1912,7 +1918,7 @@ function addressFormPage(account, mode = "new", id = "") {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
         </a>
         <h1>${isEdit ? "Edit Address" : "Add Address"}</h1>
-        <button class="text-button" type="reset" form="addressForm">Reset</button>
+        <span aria-hidden="true"></span>
       </div>
       <form class="address-form" id="addressForm" data-address-id="${safe(existing.id || "")}">
         ${addressFormSection("Contact Info", `
@@ -1921,9 +1927,9 @@ function addressFormPage(account, mode = "new", id = "") {
           ${addressField("Alternate Phone", "alternatePhone", existing.alternatePhone || "", "tel", false)}
         `)}
         ${addressFormSection("Address Info", `
-          ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
           ${smartSelectField("State / Union Territory", "state", existing.state || "", "Search state")}
           ${smartSelectField("City", "city", existing.city || "", "Select state first")}
+          ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
           ${addressField("Locality / Area / Street", "area", existing.area || "", "text", true)}
           ${addressField("Flat / House / Building", "houseNo", existing.houseNo || "", "text", true)}
           ${addressField("Landmark (optional)", "landmark", existing.landmark || "", "text", false)}
@@ -1931,11 +1937,12 @@ function addressFormPage(account, mode = "new", id = "") {
         <section class="address-form-section">
           <h2>Address Type</h2>
           <div class="address-type-group">
-            ${["Home", "Work", "Other"].map((type) => `<label><input type="radio" name="addressType" value="${type}" ${(existing.addressType || "Home") === type ? "checked" : ""}>${type}</label>`).join("")}
+            ${["Home", "Work", "Other"].map((type) => `<label class="address-type-option ${(existing.addressType || "Home") === type ? "active" : ""}"><input type="radio" name="addressType" value="${type}" ${(existing.addressType || "Home") === type ? "checked" : ""}><span>${type}</span></label>`).join("")}
           </div>
+          <small class="field-error" data-field-error="addressType"></small>
         </section>
         <label class="default-toggle"><input type="checkbox" name="isDefault" ${existing.isDefault ? "checked" : ""}><span>Make as default address</span></label>
-        <div class="sticky-save-bar"><button class="button primary" type="submit"><span class="button-label">Save Address</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+        <div class="address-form-actions"><button class="button primary" type="submit" disabled><span class="button-label">Save Address</span><span class="button-spinner" aria-hidden="true"></span></button></div>
       </form>
     </section>
   `;
@@ -1968,6 +1975,8 @@ async function profilePage(section = "overview", action = "", id = "") {
   const account = await getAccountData();
   if (section === "edit") return profileEditPage(account);
   if (section === "security") return profileSecurityPage(account);
+  if (section === "settings" && action === "delete-account") return deleteAccountComingSoonPage();
+  if (section === "settings" && ["privacy", "data"].includes(action)) return privacyDataPage(action);
   if (section === "settings") return settingsPage();
   if (section === "addresses" && (action === "new" || action === "edit")) {
     if (action === "edit" && !addressCache) await getAddresses(true);
@@ -2394,18 +2403,61 @@ function setupAddressForm() {
   if (!form) return;
   setupSmartAddressControls(form);
   setupSmartAddressOutsideClick();
-  form.elements.pincode?.addEventListener("input", () => handlePincodeInput(form));
+  setupAddressTypeControls(form);
+  form.addEventListener("input", (event) => {
+    if (event.target?.name === "pincode") {
+      handlePincodeInput(form);
+      return;
+    }
+    if (["fullName", "phone", "area", "houseNo"].includes(event.target?.name)) {
+      clearFieldError(form, event.target.name);
+    }
+    updateAddressSubmitState(form);
+  });
+  form.addEventListener("change", () => updateAddressSubmitState(form));
+  if (form.elements.pincode?.value) handlePincodeInput(form);
+  updateAddressSubmitState(form);
 }
 
 async function getIndiaAddressMeta() {
   if (indiaAddressMeta) return indiaAddressMeta;
   const fallback = {
-    Maharashtra: ["Mumbai", "Pune", "Nagpur", "Nashik", "Thane"],
-    Delhi: ["New Delhi", "Delhi", "Dwarka", "Rohini"],
-    Karnataka: ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi"],
-    "West Bengal": ["Kolkata", "Howrah", "Siliguri", "Durgapur"],
-    "Uttar Pradesh": ["Lucknow", "Kanpur", "Varanasi", "Noida"],
-    Bihar: ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur"]
+    "Andaman and Nicobar Islands": ["Port Blair", "Mayabunder", "Diglipur", "Rangat"],
+    "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Tirupati", "Kurnool", "Rajahmundry", "Kakinada"],
+    "Arunachal Pradesh": ["Itanagar", "Naharlagun", "Tawang", "Pasighat", "Ziro"],
+    Assam: ["Guwahati", "Dibrugarh", "Silchar", "Jorhat", "Tezpur", "Nagaon"],
+    Bihar: ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga", "Purnia"],
+    Chandigarh: ["Chandigarh"],
+    Chhattisgarh: ["Raipur", "Bhilai", "Bilaspur", "Korba", "Durg"],
+    "Dadra and Nagar Haveli and Daman and Diu": ["Daman", "Diu", "Silvassa"],
+    Delhi: ["New Delhi", "Delhi", "Dwarka", "Rohini", "Saket"],
+    Goa: ["Panaji", "Margao", "Vasco da Gama", "Mapusa", "Ponda"],
+    Gujarat: ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Gandhinagar", "Bhavnagar", "Jamnagar"],
+    Haryana: ["Gurugram", "Faridabad", "Panipat", "Ambala", "Hisar", "Karnal", "Rohtak"],
+    "Himachal Pradesh": ["Shimla", "Dharamshala", "Mandi", "Solan", "Kullu"],
+    "Jammu and Kashmir": ["Srinagar", "Jammu", "Anantnag", "Baramulla", "Udhampur"],
+    Jharkhand: ["Ranchi", "Jamshedpur", "Dhanbad", "Bokaro", "Deoghar"],
+    Karnataka: ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Belagavi", "Davangere", "Udupi"],
+    Kerala: ["Kochi", "Thiruvananthapuram", "Kozhikode", "Thrissur", "Kollam", "Kannur"],
+    Ladakh: ["Leh", "Kargil"],
+    Lakshadweep: ["Kavaratti", "Agatti", "Minicoy"],
+    "Madhya Pradesh": ["Bhopal", "Indore", "Jabalpur", "Gwalior", "Ujjain", "Sagar"],
+    Maharashtra: ["Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Aurangabad", "Solapur", "Kolhapur"],
+    Manipur: ["Imphal", "Thoubal", "Bishnupur", "Churachandpur"],
+    Meghalaya: ["Shillong", "Tura", "Jowai", "Nongpoh"],
+    Mizoram: ["Aizawl", "Lunglei", "Champhai", "Serchhip"],
+    Nagaland: ["Kohima", "Dimapur", "Mokokchung", "Wokha"],
+    Odisha: ["Bhubaneswar", "Cuttack", "Rourkela", "Puri", "Sambalpur", "Berhampur"],
+    Puducherry: ["Puducherry", "Karaikal", "Yanam", "Mahe"],
+    Punjab: ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Mohali"],
+    Rajasthan: ["Jaipur", "Jodhpur", "Udaipur", "Kota", "Ajmer", "Bikaner"],
+    Sikkim: ["Gangtok", "Namchi", "Gyalshing", "Mangan"],
+    "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tiruppur"],
+    Telangana: ["Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Khammam"],
+    Tripura: ["Agartala", "Udaipur", "Dharmanagar", "Kailashahar"],
+    "Uttar Pradesh": ["Lucknow", "Kanpur", "Varanasi", "Agra", "Noida", "Ghaziabad", "Prayagraj", "Meerut"],
+    Uttarakhand: ["Dehradun", "Haridwar", "Rishikesh", "Haldwani", "Nainital"],
+    "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Siliguri", "Asansol", "Darjeeling"]
   };
   try {
     const data = await api("/api/addresses/india-meta");
@@ -2418,18 +2470,40 @@ async function getIndiaAddressMeta() {
 
 async function setupSmartAddressControls(form) {
   const states = await getIndiaAddressMeta();
+  const selectedState = getExactOption(Object.keys(states), form.elements.state?.value) || "";
+  if (form.elements.state?.value && !selectedState) {
+    setSmartSelectValue(form, "state", "");
+  }
+  if (selectedState) setSmartSelectValue(form, "state", selectedState);
+
   setupSmartSelect(form, "state", Object.keys(states), (state) => {
     setSmartSelectValue(form, "state", state);
     setSmartSelectValue(form, "city", "");
     setupSmartSelect(form, "city", states[state] || []);
     clearFieldError(form, "state");
     validateSelectedPincodeMatch(form);
+    updateAddressSubmitState(form);
+    window.setTimeout(() => form.querySelector("#citySearch")?.focus(), 80);
   });
-  setupSmartSelect(form, "city", states[form.elements.state?.value] || [], (city) => {
+
+  const cityOptions = states[form.elements.state?.value] || [];
+  const selectedCity = getExactOption(cityOptions, form.elements.city?.value) || "";
+  if (form.elements.city?.value && !selectedCity) setSmartSelectValue(form, "city", "");
+  if (selectedCity) setSmartSelectValue(form, "city", selectedCity);
+
+  setupSmartSelect(form, "city", cityOptions, (city) => {
     setSmartSelectValue(form, "city", city);
     clearFieldError(form, "city");
     validateSelectedPincodeMatch(form);
+    updateAddressSubmitState(form);
+    window.setTimeout(() => form.elements.pincode?.focus(), 80);
   });
+  const citySearch = form.querySelector("#citySearch");
+  if (citySearch) {
+    citySearch.disabled = !form.elements.state?.value;
+    citySearch.placeholder = form.elements.state?.value ? "Search city" : "Select state first";
+  }
+  updateAddressSubmitState(form);
 }
 
 function setupSmartSelect(form, name, options, onSelect) {
@@ -2437,30 +2511,87 @@ function setupSmartSelect(form, name, options, onSelect) {
   const search = field?.querySelector(".smart-select-search");
   const menu = field?.querySelector(".smart-select-menu");
   if (!field || !search || !menu) return;
+  let currentOptions = [...options];
+  let highlightedIndex = 0;
 
   const renderOptions = () => {
     const query = search.value.trim().toLowerCase();
-    const filtered = options.filter((option) => option.toLowerCase().includes(query)).slice(0, 80);
-    menu.innerHTML = filtered.map((option) => `<button type="button" role="option" data-smart-option="${safe(option)}">${safe(option)}</button>`).join("")
-      || '<span class="smart-select-empty">No matching options</span>';
+    currentOptions = options.filter((option) => option.toLowerCase().includes(query)).slice(0, 80);
+    highlightedIndex = 0;
+    const emptyText = name === "city" && !form.elements.state?.value ? "Select state first" : `No valid ${name === "state" ? "state" : "city"} found`;
+    menu.innerHTML = currentOptions.map((option, index) => `<button class="${index === highlightedIndex ? "highlighted" : ""}" type="button" role="option" data-smart-option="${safe(option)}">${safe(option)}</button>`).join("")
+      || `<span class="smart-select-empty">${emptyText}</span>`;
     menu.hidden = false;
     search.setAttribute("aria-expanded", "true");
+  };
+
+  const selectOption = (value) => {
+    const exact = getExactOption(options, value);
+    if (!exact) return false;
+    onSelect(exact);
+    menu.hidden = true;
+    search.setAttribute("aria-expanded", "false");
+    return true;
   };
 
   search.onfocus = renderOptions;
   search.oninput = () => {
     form.elements[name].value = "";
+    clearFieldError(form, name);
     renderOptions();
+    updateAddressSubmitState(form);
+  };
+  search.onkeydown = (event) => {
+    if (event.key === "ArrowDown" && currentOptions.length) {
+      event.preventDefault();
+      highlightedIndex = Math.min(highlightedIndex + 1, currentOptions.length - 1);
+      renderHighlightedOption(menu, highlightedIndex);
+    }
+    if (event.key === "ArrowUp" && currentOptions.length) {
+      event.preventDefault();
+      highlightedIndex = Math.max(highlightedIndex - 1, 0);
+      renderHighlightedOption(menu, highlightedIndex);
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const selected = currentOptions[highlightedIndex] || currentOptions[0] || "";
+      if (!selectOption(selected)) {
+        setFieldError(form, name, name === "state" ? "Select a valid state" : "Select a valid city");
+        updateAddressSubmitState(form);
+      }
+    }
+    if (event.key === "Escape") {
+      menu.hidden = true;
+      search.setAttribute("aria-expanded", "false");
+    }
+  };
+  search.onblur = () => {
+    window.setTimeout(() => {
+      if (menu.contains(document.activeElement)) return;
+      const exact = getExactOption(options, search.value);
+      if (exact) {
+        selectOption(exact);
+      } else if (search.value.trim() || form.elements[name].value) {
+        setSmartSelectValue(form, name, "");
+        setFieldError(form, name, name === "state" ? "Select a valid state" : "Select a valid city");
+      }
+      updateAddressSubmitState(form);
+    }, 120);
   };
   menu.onmousedown = (event) => {
     const option = event.target.closest("[data-smart-option]");
     if (!option) return;
     event.preventDefault();
-    onSelect(option.dataset.smartOption || "");
-    menu.hidden = true;
-    search.setAttribute("aria-expanded", "false");
+    selectOption(option.dataset.smartOption || "");
   };
   menu.hidden = true;
+}
+
+function renderHighlightedOption(menu, index) {
+  menu.querySelectorAll("[data-smart-option]").forEach((button, buttonIndex) => {
+    button.classList.toggle("highlighted", buttonIndex === index);
+    if (buttonIndex === index) button.scrollIntoView({ block: "nearest" });
+  });
 }
 
 function setupSmartAddressOutsideClick() {
@@ -2484,10 +2615,43 @@ function setSmartSelectValue(form, name, value) {
   if (search) search.value = value;
 }
 
+function normalizeSmartText(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+}
+
+function getExactOption(options, value) {
+  const normalized = normalizeSmartText(value);
+  if (!normalized) return "";
+  return options.find((option) => normalizeSmartText(option) === normalized) || "";
+}
+
+function setupAddressTypeControls(form) {
+  const options = [...form.querySelectorAll(".address-type-option")];
+  const sync = () => {
+    options.forEach((label) => {
+      label.classList.toggle("active", Boolean(label.querySelector("input")?.checked));
+    });
+    updateAddressSubmitState(form);
+  };
+  options.forEach((label) => {
+    label.addEventListener("click", () => window.setTimeout(sync, 0));
+    label.querySelector("input")?.addEventListener("change", sync);
+  });
+  if (!form.elements.addressType?.value) {
+    const home = form.querySelector('input[name="addressType"][value="Home"]');
+    if (home) home.checked = true;
+  }
+  sync();
+}
+
 function setFieldError(form, name, message) {
   const error = form.querySelector(`[data-field-error="${name}"]`);
   if (error) error.textContent = message || "";
-  form.elements[name]?.classList.toggle("invalid", Boolean(message));
+  const field = form.elements[name];
+  if (field?.classList) field.classList.toggle("invalid", Boolean(message));
+  if (name === "addressType") {
+    form.querySelectorAll(".address-type-option").forEach((option) => option.classList.toggle("invalid", Boolean(message)));
+  }
 }
 
 function clearFieldError(form, name) {
@@ -2496,13 +2660,24 @@ function clearFieldError(form, name) {
 
 function handlePincodeInput(form) {
   const input = form.elements.pincode;
-  input.value = String(input.value || "").replace(/\D/g, "").slice(0, 6);
+  const rawValue = String(input.value || "");
+  input.value = rawValue.replace(/\D/g, "").slice(0, 6);
   clearFieldError(form, "pincode");
   addressPincodeState = { pincode: input.value, valid: false, state: "", city: "", message: "" };
+  if ((rawValue && !input.value) || (input.value && input.value.length < 6)) {
+    setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+  }
   if (input.value.length === 6) validatePincodeWithServer(form, input.value);
+  updateAddressSubmitState(form);
 }
 
 async function validatePincodeWithServer(form, pincode) {
+  if (!/^\d{6}$/.test(String(pincode || ""))) {
+    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code" };
+    setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+    updateAddressSubmitState(form);
+    return false;
+  }
   setFieldError(form, "pincode", "Checking PIN code...");
   try {
     const result = await api(`/api/addresses/pincode/${pincode}`);
@@ -2526,9 +2701,13 @@ async function validatePincodeWithServer(form, pincode) {
     const city = cityOptions.find((item) => item.toLowerCase() === String(result.city || "").toLowerCase()) || cityOptions[0] || result.city || "";
     if (city) setSmartSelectValue(form, "city", city);
     validateSelectedPincodeMatch(form);
+    updateAddressSubmitState(form);
+    return true;
   } catch (error) {
-    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Invalid Indian PIN code" };
-    setFieldError(form, "pincode", "Invalid Indian PIN code");
+    addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code" };
+    setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+    updateAddressSubmitState(form);
+    return false;
   }
 }
 
@@ -2554,33 +2733,70 @@ async function getAddressFormPayload(form) {
   const phone = normalizePhoneNumber(data.phone);
   const alternatePhone = data.alternatePhone ? normalizePhoneNumber(data.alternatePhone) : "";
   const pincode = String(data.pincode || "").replace(/\D/g, "");
-  if (!String(data.fullName || "").trim()) throw new Error("Full name is required.");
-  if (!phone) throw new Error("Enter a valid phone number.");
-  if (alternatePhone === "" && data.alternatePhone) throw new Error("Enter a valid alternate phone number.");
-  if (!/^\d{6}$/.test(pincode)) throw new Error("Enter a valid 6-digit pincode.");
-  if (!data.state) throw new Error("Choose a valid Indian state.");
-  if (!data.city) throw new Error("Choose a city for the selected state.");
+  const states = await getIndiaAddressMeta();
+  const validState = getExactOption(Object.keys(states), data.state);
+  const validCity = getExactOption(states[validState] || [], data.city);
+  clearAddressValidationErrors(form);
+  if (!String(data.fullName || "").trim()) setFieldError(form, "fullName", "Full name is required");
+  if (!phone) setFieldError(form, "phone", "Enter a valid phone number");
+  if (alternatePhone === "" && data.alternatePhone) setFieldError(form, "alternatePhone", "Enter a valid alternate phone number");
+  if (!/^\d{6}$/.test(pincode)) setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
+  if (!validState) setFieldError(form, "state", "Select a valid state");
+  if (!validCity) setFieldError(form, "city", validState ? "Select a valid city" : "Select a valid state first");
+  ["area", "houseNo"].forEach((field) => {
+    if (!String(data[field] || "").trim()) setFieldError(form, field, `${field === "houseNo" ? "Flat / House / Building" : "Locality / Area / Street"} is required`);
+  });
+  if (!data.addressType || !["Home", "Work", "Other"].includes(data.addressType)) {
+    setFieldError(form, "addressType", "Choose a valid address type");
+  }
+  if (form.querySelector(".invalid")) throw new Error("Please complete the highlighted address fields.");
   if (addressPincodeState.pincode !== pincode || !addressPincodeState.valid) {
     await validatePincodeWithServer(form, pincode);
   }
-  if (!addressPincodeState.valid) throw new Error(addressPincodeState.message || "Invalid Indian PIN code");
-  if (!validateSelectedPincodeMatch(form)) throw new Error("PIN code does not match selected city or state.");
-  ["city", "state", "area", "houseNo"].forEach((field) => {
-    if (!String(data[field] || "").trim()) throw new Error(`${field === "houseNo" ? "Flat / House / Building" : field} is required.`);
-  });
+  if (!addressPincodeState.valid) {
+    setFieldError(form, "pincode", addressPincodeState.message || "Enter a valid 6-digit Indian PIN code");
+    throw new Error("Please complete the highlighted address fields.");
+  }
+  if (!validateSelectedPincodeMatch(form)) throw new Error("Please complete the highlighted address fields.");
   return {
     fullName: String(data.fullName).trim(),
     phone,
     alternatePhone,
     pincode,
-    city: String(data.city).trim(),
-    state: String(data.state).trim(),
+    city: validCity,
+    state: validState,
     area: String(data.area).trim(),
     houseNo: String(data.houseNo).trim(),
     landmark: String(data.landmark || "").trim(),
     addressType: String(data.addressType || "Home"),
     isDefault: Boolean(data.isDefault)
   };
+}
+
+function clearAddressValidationErrors(form) {
+  ["fullName", "phone", "alternatePhone", "pincode", "state", "city", "area", "houseNo", "addressType"].forEach((field) => clearFieldError(form, field));
+}
+
+function updateAddressSubmitState(form) {
+  const button = form.querySelector("button[type='submit']");
+  if (!button || button.classList.contains("is-loading")) return;
+  const state = form.elements.state?.value || "";
+  const city = form.elements.city?.value || "";
+  const stateOptions = Object.keys(indiaAddressMeta || {});
+  const cityOptions = state && indiaAddressMeta ? indiaAddressMeta[state] || [] : [];
+  const requiredReady = Boolean(
+    String(form.elements.fullName?.value || "").trim()
+    && normalizePhoneNumber(form.elements.phone?.value || "")
+    && String(form.elements.houseNo?.value || "").trim()
+    && String(form.elements.area?.value || "").trim()
+    && getExactOption(stateOptions, state)
+    && getExactOption(cityOptions, city)
+    && /^\d{6}$/.test(String(form.elements.pincode?.value || ""))
+    && addressPincodeState.pincode === String(form.elements.pincode?.value || "")
+    && addressPincodeState.valid
+    && form.elements.addressType?.value
+  );
+  button.disabled = !requiredReady || !validateSelectedPincodeMatch(form);
 }
 
 async function saveAddress(event) {
@@ -2769,12 +2985,94 @@ function settingsPage() {
       <div class="settings-list">
         <article class="settings-row"><span>${accountIcon("Settings")}</span><div><h3>App Preferences</h3><p>Mobile-first shopping, saved cart, theme, and smooth checkout defaults.</p></div></article>
         <article class="settings-row"><span>${accountIcon("Notifications")}</span><div><h3>Notification Preferences</h3><p>Drop, sale, restock, and order alerts without spam.</p>${notificationPreferencesMarkup()}</div></article>
+        <a class="settings-row settings-link-row" href="#/profile/settings/privacy">
+          <span>${accountIcon("Privacy & Data")}</span>
+          <div><h3>Privacy & Data</h3><p>Review privacy policy, data use, saved account data, and deletion options.</p></div>
+          <i class="settings-chevron" aria-hidden="true">&gt;</i>
+        </a>
         <article class="settings-row"><span>${accountIcon("Security")}</span><div><h3>Account Protection</h3><p>Email OTP verification, password recovery, and logout controls.</p><a class="text-button" href="#/profile/security">Manage security</a></div></article>
       </div>
     </section>
   `;
   updateThemeCards();
   setupNotificationPreferenceControls();
+}
+
+function privacyDataPage(tab = "privacy") {
+  const isDataTab = tab === "data";
+  const policySections = [
+    ["Information We Collect", "We collect basic account details like name, email, phone number, delivery address, order details, wishlist, cart activity and payment preference."],
+    ["How We Use Your Information", "We use your data to manage your account, process orders, deliver products, improve shopping experience, send order updates and provide customer support."],
+    ["Delivery & Address Data", "Your address is used only for order delivery, Cash on Delivery verification and customer support."],
+    ["Notifications", "We may send order updates, restock alerts, sneaker drop alerts and promotional updates only when allowed by the user."],
+    ["Payments", "Urban Kicks currently supports Cash on Delivery. Online payment details will not be stored unless payment features are added later."],
+    ["Data Safety", "We do not sell your personal data. Your information is used only for Urban Kicks shopping, delivery and support purposes."],
+    ["Account Control", "Users can update profile details, manage addresses, control notifications and request account deletion."]
+  ];
+  const dataCategories = ["Profile information", "Saved addresses", "Orders", "Wishlist", "Cart", "Notification preferences"];
+
+  app.innerHTML = `
+    <section class="profile-shell narrow privacy-data-shell">
+      <div class="edit-profile-topbar">
+        <a class="edit-back-button" href="#/profile/settings" aria-label="Back to settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
+        </a>
+        <h1>Privacy & Data</h1>
+        <span aria-hidden="true"></span>
+      </div>
+
+      <div class="privacy-tabs" role="tablist" aria-label="Privacy and data sections">
+        <a class="${isDataTab ? "" : "active"}" href="#/profile/settings/privacy" role="tab" aria-selected="${!isDataTab}">Privacy Policy</a>
+        <a class="${isDataTab ? "active" : ""}" href="#/profile/settings/data" role="tab" aria-selected="${isDataTab}">Your Data</a>
+      </div>
+
+      <section class="privacy-card ${isDataTab ? "data-view" : "policy-view"}">
+        ${isDataTab ? `
+          <div class="privacy-copy-block">
+            <p class="eyebrow">Your Data</p>
+            <h2>Your Data</h2>
+            <p>Urban Kicks respects your privacy. Your personal data is used only to provide shopping, delivery, order updates and customer support. We do not sell your data to third parties.</p>
+          </div>
+          <div class="data-category-grid">
+            ${dataCategories.map((category) => `<article><span>${accountIcon(category === "Profile information" ? "Settings" : category === "Saved addresses" ? "Addresses" : category === "Notification preferences" ? "Notifications" : category)}</span><strong>${safe(category)}</strong></article>`).join("")}
+          </div>
+          <a class="button privacy-delete-button" href="#/profile/settings/delete-account">Delete Account</a>
+        ` : `
+          <div class="privacy-policy-list">
+            ${policySections.map(([title, copy]) => `
+              <article>
+                <span>${accountIcon("Privacy & Data")}</span>
+                <div>
+                  <h2>${safe(title)}</h2>
+                  <p>${safe(copy)}</p>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        `}
+      </section>
+    </section>
+  `;
+}
+
+function deleteAccountComingSoonPage() {
+  app.innerHTML = `
+    <section class="profile-shell narrow privacy-data-shell">
+      <div class="edit-profile-topbar">
+        <a class="edit-back-button" href="#/profile/settings/data" aria-label="Back to Privacy & Data">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5.4 9 12l6.6 6.6-1.4 1.4L6.2 12l8-8 1.4 1.4Z"/></svg>
+        </a>
+        <h1>Delete Account</h1>
+        <span aria-hidden="true"></span>
+      </div>
+      <div class="premium-empty delete-account-card">
+        <p class="eyebrow">Coming Soon</p>
+        <h2>Delete Account</h2>
+        <p>Account deletion is coming soon. You will soon be able to request permanent deletion of your Urban Kicks account and personal data.</p>
+        <a class="button primary" href="#/profile/settings/data">Back to Privacy & Data</a>
+      </div>
+    </section>
+  `;
 }
 
 async function adminPage() {
