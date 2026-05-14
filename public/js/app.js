@@ -17,8 +17,11 @@ const SPLASH_KEY = "urbanKicksSplashSeen";
 const SPLASH_HOLD_MS = 1550;
 const SPLASH_FADE_MS = 720;
 const OTP_COOLDOWN_KEY = "urbanKicksOtpCooldown";
+const NOTIFICATION_PREF_KEY = "urbanKicksNotificationPrefs";
 const EMAIL_OTP_LENGTH = 6;
-const EMAIL_AUTH_COOLDOWN_SECONDS = 60;
+const EMAIL_AUTH_COOLDOWN_SECONDS = 30;
+const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
+const EMAIL_OTP_MAX_VERIFY_ATTEMPTS = 5;
 
 let catalogCache = null;
 let wishlistCache = null;
@@ -32,8 +35,12 @@ let emailAuthState = {
   flow: "",
   shouldCreateUser: false,
   cooldownUntil: 0,
+  otpExpiresAt: 0,
+  verifyAttempts: 0,
   timer: null,
-  inFlight: false
+  inFlight: false,
+  recoverySession: null,
+  pendingEmailChange: null
 };
 let checkoutSelectedAddressId = "";
 
@@ -104,10 +111,20 @@ function authErrorMessage(error, fallback = "Authentication failed. Please try a
 }
 
 function notify(message, type = "info") {
+  if (!toastRegion) return;
   const toast = document.createElement("div");
   const normalizedMessage = errorToMessage(message, "Something went wrong. Please try again.");
+  const labels = {
+    success: ["Success", "M7.8 12.6 10.6 15.4 16.6 8.7 18 10 10.7 18 6.4 13.8z"],
+    error: ["Action needed", "M12 3 21 19H3L12 3Zm0 5.5v4.8m0 2.7h.01"],
+    info: ["Urban Kicks", "M12 7.2h.01M11 10h2v7h-2z"]
+  };
+  const [title, iconPath] = labels[type] || labels.info;
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `<strong>${type === "success" ? "Success" : type === "error" ? "Action needed" : "Urban Kicks"}</strong><span>${safe(normalizedMessage)}</span>`;
+  toast.innerHTML = `
+    <span class="toast-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="${iconPath}"/></svg></span>
+    <span class="toast-copy"><strong>${title}</strong><span>${safe(normalizedMessage)}</span></span>
+  `;
   toastRegion.appendChild(toast);
   window.setTimeout(() => toast.classList.add("show"), 20);
   window.setTimeout(() => {
@@ -1094,7 +1111,7 @@ function authPage(mode = "login") {
         <div class="auth-feature-list">
           <span>Password login</span>
           <span>Signup and recovery OTP</span>
-          <span>60-second resend timer</span>
+          <span>30-second resend timer</span>
           <span>Persistent account session</span>
           <span>Phone saved for future SMS features</span>
         </div>
@@ -1149,7 +1166,7 @@ function forgotFormMarkup() {
   return `
     <p class="eyebrow">Account Recovery</p>
     <h1>Forgot Password?</h1>
-    <p class="auth-note">Recover access with the same secure 6-digit email OTP flow inside Urban Kicks.</p>
+    <p class="auth-note">Recover access with a secure 6-digit email OTP, then set a fresh password inside Urban Kicks.</p>
     <form class="form email-auth-form" id="otpLoginForm">
       <label>Email<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
       <button class="button dark" type="submit" id="sendEmailOtpButton">
@@ -1159,6 +1176,14 @@ function forgotFormMarkup() {
     </form>
     <p class="auth-switch">Back to <a href="#/auth">Login</a></p>
     ${otpPanelMarkup()}
+    <form class="form email-auth-form recovery-password-panel" id="recoveryPasswordForm" hidden>
+      <p class="eyebrow">Final Step</p>
+      <h2>Set new password</h2>
+      <p class="auth-note">Your OTP is verified. Create a new password to finish recovering your account.</p>
+      <label>New Password<input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
+      <label>Confirm Password<input name="confirmPassword" type="password" required minlength="6" autocomplete="new-password" placeholder="Repeat new password"></label>
+      <button class="button primary" type="submit"><span class="button-label">Update Password</span><span class="button-spinner" aria-hidden="true"></span></button>
+    </form>
   `;
 }
 
@@ -1169,7 +1194,7 @@ function otpPanelMarkup() {
         <span class="otp-status-dot"></span>
         <div>
           <strong>Email verification</strong>
-          <p class="auth-note">Enter the 6-digit OTP sent to your email. The app will stop accepting this code after 60 seconds.</p>
+          <p class="auth-note">Enter the 6-digit OTP sent to your email. This code expires in 10 minutes.</p>
         </div>
       </div>
       <div class="otp-boxes" id="emailOtpBoxes" aria-label="Email one time password">${otpInputMarkup()}</div>
@@ -1178,7 +1203,7 @@ function otpPanelMarkup() {
         <span class="button-label">Verify OTP</span>
         <span class="button-spinner" aria-hidden="true"></span>
       </button>
-      <button class="button light email-otp-resend-button" type="button" id="resendEmailOtpButton" disabled>Resend OTP in 60s</button>
+      <button class="button light email-otp-resend-button" type="button" id="resendEmailOtpButton" disabled>Resend OTP in 30s</button>
     </div>
   `;
 }
@@ -1245,6 +1270,22 @@ function syncEmailOtpValue() {
   const hiddenInput = document.getElementById("emailOtpValue");
   if (hiddenInput) hiddenInput.value = token;
   return token;
+}
+
+function createEmptyEmailAuthState() {
+  return {
+    email: "",
+    profileData: null,
+    flow: "",
+    shouldCreateUser: false,
+    cooldownUntil: 0,
+    otpExpiresAt: 0,
+    verifyAttempts: 0,
+    timer: null,
+    inFlight: false,
+    recoverySession: null,
+    pendingEmailChange: null
+  };
 }
 
 function getSignupFormData(form) {
@@ -1321,10 +1362,12 @@ function setupAuthForms(mode) {
   const loginForm = document.getElementById("loginForm");
   const signupForm = document.getElementById("signupForm");
   const otpLoginForm = document.getElementById("otpLoginForm");
+  const recoveryPasswordForm = document.getElementById("recoveryPasswordForm");
 
   loginForm?.addEventListener("submit", loginWithPassword);
   signupForm?.addEventListener("submit", sendSignupEmailOtp);
   otpLoginForm?.addEventListener("submit", sendForgotEmailOtp);
+  recoveryPasswordForm?.addEventListener("submit", completeRecoveryPasswordReset);
 
   if (mode === "signup" || mode === "forgot") setupEmailOtpControls();
 }
@@ -1431,6 +1474,33 @@ async function resendEmailOtp(event) {
     notify("Start the email OTP flow again before requesting another code.", "error");
     return;
   }
+  if (emailAuthState.flow === "email_change") {
+    const button = document.getElementById("resendEmailOtpButton");
+    const cooldownKey = `${OTP_COOLDOWN_KEY}:email_change:${emailAuthState.email.toLowerCase()}`;
+    if (emailAuthState.inFlight || Date.now() < emailAuthState.cooldownUntil) {
+      notify("Please wait before requesting another email OTP.", "error");
+      return;
+    }
+    emailAuthState.inFlight = true;
+    setButtonLoading(button, true, "Sending OTP...");
+    try {
+      const client = await getSupabaseClient();
+      const { error } = await client.auth.updateUser({ email: emailAuthState.email });
+      if (error) throw new Error(authErrorMessage(error, error.message || "Could not resend email OTP."));
+      emailAuthState.otpExpiresAt = Date.now() + EMAIL_OTP_EXPIRY_MS;
+      emailAuthState.verifyAttempts = 0;
+      startEmailAuthCooldown(cooldownKey);
+      resetEmailOtpInputs();
+      notify("OTP sent", "success");
+    } catch (error) {
+      showAuthError(error, error.message || "Could not resend email OTP.");
+    } finally {
+      emailAuthState.inFlight = false;
+      setButtonLoading(button, false);
+      updateEmailAuthCooldown();
+    }
+    return;
+  }
   await startEmailOtpRequest({
     flow: emailAuthState.flow,
     email: emailAuthState.email,
@@ -1453,7 +1523,7 @@ async function startEmailOtpRequest({ flow, email, profileData, button }) {
   }
 
   emailAuthState.inFlight = true;
-  setButtonLoading(button, true, "Sending...");
+  setButtonLoading(button, true, "Sending OTP...");
   try {
     const client = await getSupabaseClient();
     console.log(`[auth] ${flow} OTP request for ${email}`);
@@ -1486,11 +1556,16 @@ async function startEmailOtpRequest({ flow, email, profileData, button }) {
     emailAuthState.profileData = profileData || { email };
     emailAuthState.flow = flow;
     emailAuthState.shouldCreateUser = flow === "signup";
+    emailAuthState.otpExpiresAt = Date.now() + EMAIL_OTP_EXPIRY_MS;
+    emailAuthState.verifyAttempts = 0;
+    emailAuthState.recoverySession = null;
     const otpPanel = document.getElementById("emailOtpPanel");
     if (otpPanel) otpPanel.hidden = false;
+    const recoveryPanel = document.getElementById("recoveryPasswordForm");
+    if (recoveryPanel) recoveryPanel.hidden = true;
     resetEmailOtpInputs();
     startEmailAuthCooldown(cooldownKey);
-    notify("OTP sent successfully", "success");
+    notify("OTP sent", "success");
     return true;
   } catch (error) {
     console.error(error);
@@ -1520,8 +1595,13 @@ async function verifyEmailOtp() {
     return;
   }
 
-  if (Date.now() > emailAuthState.cooldownUntil) {
+  if (Date.now() > emailAuthState.otpExpiresAt) {
     notify("This OTP window has expired. Please request a fresh email OTP.", "error");
+    return;
+  }
+
+  if (emailAuthState.verifyAttempts >= EMAIL_OTP_MAX_VERIFY_ATTEMPTS) {
+    notify("Too many incorrect attempts. Request a fresh OTP to continue.", "error");
     return;
   }
 
@@ -1529,7 +1609,8 @@ async function verifyEmailOtp() {
   try {
     const client = await getSupabaseClient();
     console.log(`[auth] verifying email OTP for ${email}`);
-    const otpType = emailAuthState.flow === "recovery" ? "recovery" : "signup";
+    const otpType = emailAuthState.flow === "recovery" ? "recovery" : emailAuthState.flow === "email_change" ? "email_change" : "signup";
+    emailAuthState.verifyAttempts += 1;
     const { data: authData, error } = await client.auth.verifyOtp({
       email,
       token,
@@ -1541,6 +1622,32 @@ async function verifyEmailOtp() {
     }
     if (!authData?.session || !authData?.user) {
       throw new Error("Email OTP verified, but Supabase did not return a session. Please try again.");
+    }
+
+    if (emailAuthState.flow === "recovery") {
+      await syncSessionFromSupabase(authData.session);
+      emailAuthState.recoverySession = authData.session;
+      document.getElementById("emailOtpPanel")?.setAttribute("hidden", "");
+      const recoveryPanel = document.getElementById("recoveryPasswordForm");
+      if (recoveryPanel) recoveryPanel.hidden = false;
+      notify("OTP verified. Set your new password.", "success");
+      return;
+    }
+
+    if (emailAuthState.flow === "email_change") {
+      await syncSessionFromSupabase(authData.session);
+      const pending = emailAuthState.pendingEmailChange || {};
+      await upsertUserProfile(authData.user, {
+        name: pending.name,
+        full_name: pending.name,
+        email,
+        mobile: pending.mobile || "",
+        phone_number: pending.mobile || ""
+      });
+      emailAuthState = createEmptyEmailAuthState();
+      notify("Email updated and verified.", "success");
+      location.hash = "#/profile";
+      return;
     }
 
     await syncSessionFromSupabase(authData.session);
@@ -1555,7 +1662,7 @@ async function verifyEmailOtp() {
     await getWishlist();
     if (emailAuthState.timer) window.clearTimeout(emailAuthState.timer);
     const verifiedRecovery = emailAuthState.flow === "recovery";
-    emailAuthState = { email: "", profileData: null, flow: "", shouldCreateUser: false, cooldownUntil: 0, timer: null, inFlight: false };
+    emailAuthState = createEmptyEmailAuthState();
     notify("Email verified. Welcome to Urban Kicks India.", "success");
     location.hash = verifiedRecovery ? "#/profile/security" : "#/profile";
   } catch (error) {
@@ -1564,6 +1671,35 @@ async function verifyEmailOtp() {
   } finally {
     setButtonLoading(verifyButton, false);
     updateEmailAuthCooldown();
+  }
+}
+
+async function completeRecoveryPasswordReset(event) {
+  event.preventDefault();
+  const form = event.target;
+  const button = form.querySelector("button[type='submit']");
+  const data = Object.fromEntries(new FormData(form));
+  const password = String(data.password || "");
+  const confirmPassword = String(data.confirmPassword || "");
+
+  if (password.length < 6) return notify("Password must be at least 6 characters.", "error");
+  if (password !== confirmPassword) return notify("Passwords do not match.", "error");
+  if (!emailAuthState.recoverySession) return notify("Verify your recovery OTP before setting a new password.", "error");
+
+  setButtonLoading(button, true, "Updating...");
+  try {
+    const client = await getSupabaseClient();
+    const { error } = await client.auth.updateUser({ password });
+    if (error) throw new Error(authErrorMessage(error, error.message || "Could not update password."));
+    if (emailAuthState.timer) window.clearTimeout(emailAuthState.timer);
+    emailAuthState = createEmptyEmailAuthState();
+    form.reset();
+    notify("Password updated. Welcome back.", "success");
+    location.hash = "#/profile/security";
+  } catch (error) {
+    showAuthError(error, error.message || "Could not update password.");
+  } finally {
+    setButtonLoading(button, false);
   }
 }
 
@@ -1623,6 +1759,7 @@ function accountIcon(title) {
     "Payment Methods": "M4 6.5h16v11H4v-11Zm1.8 3H18.2V8.2H5.8v1.3Zm0 2v4.2H18.2v-4.2H5.8Z",
     Notifications: "M12 21a2.3 2.3 0 0 0 2.2-1.7H9.8A2.3 2.3 0 0 0 12 21Zm-5.9-3.5h11.8l-1.4-1.8v-4.3a4.5 4.5 0 0 0-3.5-4.5V5a1 1 0 1 0-2 0v1.9a4.5 4.5 0 0 0-3.5 4.5v4.3l-1.4 1.8Z",
     Security: "M12 21c4-1.7 6-4.6 6-8.7V6.5L12 4 6 6.5v5.8c0 4.1 2 7 6 8.7Zm-.7-5 4.1-4.9-1.4-1.1-2.9 3.5-1.2-1.3-1.3 1.2 2.7 2.6Z",
+    Settings: "M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8Z",
     "Help & Support": "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm-.9-5.8c0-1.2.6-1.9 1.6-2.6.8-.6 1.2-.9 1.2-1.6 0-.8-.7-1.3-1.7-1.3-1 0-1.8.5-2.4 1.3L8.5 8.8A4.4 4.4 0 0 1 12.3 7c2.1 0 3.5 1.1 3.5 2.8 0 1.4-.7 2.1-1.9 2.9-.8.6-1.1.9-1.1 1.6h-1.7Zm-.1 3h2v-2h-2v2Z",
     "About Urban Kicks": "M5 5h14v14H5V5Zm2 2v10h10V7H7Zm2 2h6v1.7H9V9Zm0 3h6v1.7H9V12Z",
     Logout: "M5 4h8v2H7v12h6v2H5V4Zm10.3 4.3 4.2 4.2-4.2 4.2-1.3-1.4 1.8-1.8H10v-2h5.8L14 9.7l1.3-1.4Z"
@@ -1741,7 +1878,7 @@ function addressFormPage(account, mode = "new", id = "") {
         <section class="address-form-section">
           <h2>Address Type</h2>
           <div class="address-type-group">
-            ${["Home", "Office", "Other"].map((type) => `<label><input type="radio" name="addressType" value="${type}" ${(existing.addressType || "Home") === type ? "checked" : ""}>${type}</label>`).join("")}
+            ${["Home", "Work", "Other"].map((type) => `<label><input type="radio" name="addressType" value="${type}" ${(existing.addressType || "Home") === type ? "checked" : ""}>${type}</label>`).join("")}
           </div>
         </section>
         <label class="default-toggle"><input type="checkbox" name="isDefault" ${existing.isDefault ? "checked" : ""}><span>Make as default address</span></label>
@@ -1766,6 +1903,7 @@ async function profilePage(section = "overview", action = "", id = "") {
   const account = await getAccountData();
   if (section === "edit") return profileEditPage(account);
   if (section === "security") return profileSecurityPage(account);
+  if (section === "settings") return settingsPage();
   if (section === "addresses" && (action === "new" || action === "edit")) {
     if (action === "edit" && !addressCache) await getAddresses(true);
     return addressFormPage(account, action, id);
@@ -1780,13 +1918,6 @@ async function profilePage(section = "overview", action = "", id = "") {
 
   app.innerHTML = `
     <section class="profile-shell account-app-shell">
-      <div class="account-topbar">
-        <h1>My Account</h1>
-        <a class="account-settings-button" href="#/settings" aria-label="Open settings">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8Z"/></svg>
-        </a>
-      </div>
-
       <div class="profile-hero-card account-profile-card">
         <div class="profile-identity">
           ${avatarMarkup(account.profile)}
@@ -1815,8 +1946,8 @@ async function profilePage(section = "overview", action = "", id = "") {
             ${accountCard("Addresses", "Add, edit, or delete delivery addresses", "#/profile/addresses", "Manage")}
             ${accountCard("Payment Methods", "Cash on Delivery active. Online payments ready later.", "#/profile/payments", "Payment")}
             ${accountCard("Notifications", "Email and drop alert preferences", "#/profile/notifications", "Alerts")}
-            ${accountCard("Security", "OTP-only account protection and logout controls", "#/profile/security", "Protect")}
-            ${accountCard("Help & Support", "FAQ, contact support, returns, and refunds", "#/profile/help", "Support")}
+            ${accountCard("Settings", "Theme, notifications, app preferences, and account protection", "#/profile/settings", "Tune")}
+            ${accountCard("Help & Support", "FAQ, contact support, returns, and refunds", "#/help", "Support")}
             ${accountCard("About Urban Kicks", "Brand story, terms, and privacy", "#/about", "Brand")}
             ${accountCard("Logout", "Securely end this session", "javascript:logout()", "Exit")}
           </div>
@@ -1843,13 +1974,6 @@ async function profilePage(section = "overview", action = "", id = "") {
 }
 
 function profileEditPage(account) {
-  const metadata = account.session.user?.user_metadata || {};
-  const splitName = splitProfileName(account.profile.name);
-  const firstName = metadata.first_name || splitName.firstName;
-  const lastName = metadata.last_name || splitName.lastName;
-  const username = metadata.username || metadata.screen_name || "";
-  const gender = metadata.gender || "";
-  const dateOfBirth = metadata.date_of_birth || metadata.dob || "";
   app.innerHTML = `
     <section class="profile-shell narrow edit-profile-shell">
       <div class="edit-profile-topbar">
@@ -1864,8 +1988,7 @@ function profileEditPage(account) {
         <div id="profilePreview" class="profile-preview">${avatarMarkup(account.profile, "medium")}</div>
         <div class="edit-preview-copy">
           <h2>${safe(account.profile.name)}</h2>
-          <p>Manage your personal information</p>
-          <button class="text-button change-photo-button" type="button" id="changePhotoButton">Change Photo</button>
+          <p>Manage the essentials for checkout, support, and account recovery.</p>
         </div>
       </div>
 
@@ -1876,20 +1999,9 @@ function profileEditPage(account) {
         </div>
 
         <div class="profile-form-grid">
-          <label class="modern-field">First Name<input name="first_name" value="${safe(firstName)}" autocomplete="given-name" placeholder="First name"></label>
-          <label class="modern-field">Last Name<input name="last_name" value="${safe(lastName)}" autocomplete="family-name" placeholder="Last name"></label>
           <label class="modern-field full">Full Name<input name="name" required value="${safe(account.profile.name)}" autocomplete="name" placeholder="Your full name"></label>
-          <label class="modern-field">Username / Screen Name<input name="username" value="${safe(username)}" autocomplete="nickname" placeholder="urbankicks_user"></label>
           <label class="modern-field">Email<input name="email" type="email" required value="${safe(account.profile.email)}" autocomplete="email" placeholder="you@example.com"></label>
           <label class="modern-field">Phone Number<input name="mobile" type="tel" inputmode="tel" value="${safe(account.profile.mobile)}" autocomplete="tel" placeholder="+91 90000 00000"></label>
-          <label class="modern-field">Gender
-            <select name="gender">
-              <option value="">Prefer not to say</option>
-              ${["Female", "Male", "Non-binary", "Other"].map((option) => `<option value="${option}" ${gender === option ? "selected" : ""}>${option}</option>`).join("")}
-            </select>
-          </label>
-          <label class="modern-field">Date of Birth<input name="date_of_birth" type="date" value="${safe(dateOfBirth)}" autocomplete="bday"></label>
-          <label class="modern-field full file-field">Profile Photo Upload<input name="profileImageFile" type="file" accept="image/*"></label>
         </div>
 
         <input type="hidden" name="profile_image" value="${safe(account.profile.image)}">
@@ -1898,6 +2010,23 @@ function profileEditPage(account) {
           <button class="button light" type="reset">Reset</button>
         </div>
       </form>
+
+      <div class="email-otp-panel profile-email-otp-panel" id="profileEmailOtpPanel" hidden>
+        <div class="otp-panel-head">
+          <span class="otp-status-dot"></span>
+          <div>
+            <strong>Verify new email</strong>
+            <p class="auth-note">Enter the OTP sent to your new email before Urban Kicks updates your account email.</p>
+          </div>
+        </div>
+        <div class="otp-boxes" id="emailOtpBoxes" aria-label="Email change one time password">${otpInputMarkup()}</div>
+        <input type="hidden" name="otp" id="emailOtpValue">
+        <button class="button primary email-otp-verify-button" type="button" id="verifyEmailOtpButton">
+          <span class="button-label">Verify Email</span>
+          <span class="button-spinner" aria-hidden="true"></span>
+        </button>
+        <button class="button light email-otp-resend-button" type="button" id="resendEmailOtpButton" disabled>Resend OTP in 30s</button>
+      </div>
 
       <section class="appearance-panel">
         <div>
@@ -1969,16 +2098,22 @@ function profileSecurityPage(account) {
 }
 
 function profileSectionPage(account, section) {
+  if (section === "help") {
+    supportPage();
+    return;
+  }
+
   const titles = {
     orders: ["Orders", "Track, review, and manage sneaker orders."],
     addresses: ["Addresses", "Add, edit, or remove saved delivery addresses."],
     payments: ["Payment Methods", "Cash on Delivery is active. UPI and cards can be enabled later."],
-    notifications: ["Notifications", "Control email alerts, drop reminders, and account updates."],
-    help: ["Help & Support", "FAQ, contact support, returns, refunds, and policies."]
+    notifications: ["Notifications", "Control email alerts, drop reminders, and account updates."]
   };
   const [title, copy] = titles[section] || ["Account", "Manage your Urban Kicks profile."];
   const content = section === "orders"
     ? account.orders.map((order) => `<article class="order-card"><div><strong>${safe(order.status)}</strong><div class="meta">${money(order.total)} / ${safe(order.paymentMethod)} / ${safe(order.createdAt || "")}</div></div><a class="button light" href="#/confirmation/${order._id}">View</a></article>`).join("") || '<div class="premium-empty"><h3>No orders yet</h3><p>Your future orders will appear here.</p><a class="button primary" href="#/">Shop sneakers</a></div>'
+    : section === "notifications"
+      ? notificationPreferencesMarkup()
     : `<div class="premium-empty"><h3>${safe(title)} coming alive</h3><p>${safe(copy)} This section is structured for production data and ready for backend expansion.</p><a class="button light" href="#/profile">Back to account</a></div>`;
 
   app.innerHTML = `
@@ -1996,42 +2131,135 @@ function profileSectionPage(account, section) {
       </section>
     </section>
   `;
+  if (section === "notifications") setupNotificationPreferenceControls();
+}
+
+function supportPage() {
+  app.innerHTML = `
+    <section class="profile-shell narrow support-coming-soon">
+      <a class="text-button back-link" href="#/profile">Back to account</a>
+      <div class="premium-empty support-center-card">
+        <p class="eyebrow">Help & Support</p>
+        <h1>Coming Soon</h1>
+        <p>Urban Kicks Support Center is coming soon.</p>
+        <a class="button primary" href="mailto:hello@urbankicks.example">Contact support</a>
+      </div>
+    </section>
+  `;
+}
+
+function getNotificationPrefs() {
+  return getStore(NOTIFICATION_PREF_KEY, {
+    prompted: false,
+    browser: false,
+    drops: true,
+    sales: true,
+    restocks: true,
+    orders: true
+  });
+}
+
+function saveNotificationPrefs(prefs) {
+  setStore(NOTIFICATION_PREF_KEY, prefs);
+}
+
+function notificationPreferencesMarkup() {
+  const prefs = getNotificationPrefs();
+  const row = (key, title, copy) => `
+    <label class="settings-toggle-row">
+      <span><strong>${safe(title)}</strong><small>${safe(copy)}</small></span>
+      <input type="checkbox" data-notification-pref="${key}" ${prefs[key] ? "checked" : ""}>
+    </label>
+  `;
+  return `
+    <div class="settings-list notification-settings-list">
+      ${row("drops", "New sneaker drops", "Get alerts when curated launches go live.")}
+      ${row("sales", "Flash sales", "Hear about limited discounts without inbox noise.")}
+      ${row("restocks", "Restocks", "Know when saved sneakers come back.")}
+      ${row("orders", "Order updates", "Delivery and checkout status updates.")}
+      <button class="button primary" type="button" id="enableBrowserNotifications">Allow Notifications</button>
+    </div>
+  `;
+}
+
+function setupNotificationPreferenceControls() {
+  const prefs = getNotificationPrefs();
+  document.querySelectorAll("[data-notification-pref]").forEach((input) => {
+    input.addEventListener("change", () => {
+      prefs[input.dataset.notificationPref] = input.checked;
+      saveNotificationPrefs(prefs);
+      notify("Notification preferences saved.", "success");
+    });
+  });
+  document.getElementById("enableBrowserNotifications")?.addEventListener("click", requestBrowserNotifications);
+}
+
+async function requestBrowserNotifications() {
+  const prefs = getNotificationPrefs();
+  prefs.prompted = true;
+  if (!("Notification" in window)) {
+    prefs.browser = false;
+    saveNotificationPrefs(prefs);
+    notify("Browser notifications are not supported here.", "error");
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    prefs.browser = permission === "granted";
+    saveNotificationPrefs(prefs);
+    notify(permission === "granted" ? "Notifications enabled." : "Notifications paused.", permission === "granted" ? "success" : "info");
+  } catch (error) {
+    prefs.browser = false;
+    saveNotificationPrefs(prefs);
+    notify("Could not request notification permission.", "error");
+  }
+}
+
+function maybeShowNotificationPrompt() {
+  const prefs = getNotificationPrefs();
+  if (prefs.prompted || !("Notification" in window) || Notification.permission !== "default") return;
+
+  const showPrompt = () => {
+    if (getNotificationPrefs().prompted || document.getElementById("notificationPermissionModal")) return;
+    const modal = document.createElement("div");
+    modal.className = "notification-permission-backdrop";
+    modal.id = "notificationPermissionModal";
+    modal.innerHTML = `
+      <section class="notification-permission-modal" role="dialog" aria-modal="true" aria-label="Enable notifications">
+        <p class="eyebrow">Stay in the loop</p>
+        <h2>Enable notifications</h2>
+        <p>Enable notifications to get:</p>
+        <ul>
+          <li>New sneaker drops</li>
+          <li>Flash sales</li>
+          <li>Restocks</li>
+          <li>Order updates</li>
+        </ul>
+        <div class="profile-form-actions">
+          <button class="button primary" type="button" id="allowNotificationsButton">Allow Notifications</button>
+          <button class="button light" type="button" id="laterNotificationsButton">Maybe Later</button>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(modal);
+    window.setTimeout(() => modal.classList.add("show"), 20);
+    document.getElementById("allowNotificationsButton")?.addEventListener("click", async () => {
+      await requestBrowserNotifications();
+      modal.remove();
+    });
+    document.getElementById("laterNotificationsButton")?.addEventListener("click", () => {
+      saveNotificationPrefs({ ...getNotificationPrefs(), prompted: true, browser: false });
+      modal.remove();
+    });
+  };
+
+  window.setTimeout(showPrompt, 24000);
+  window.addEventListener("click", () => window.setTimeout(showPrompt, 1200), { once: true });
 }
 
 function setupProfileEditForm() {
   const form = document.getElementById("profileEditForm");
-  const fileInput = form.elements.profileImageFile;
-  const hiddenImage = form.elements.profile_image;
-  const preview = document.getElementById("profilePreview");
-  const changePhotoButton = document.getElementById("changePhotoButton");
-  const initialPreview = preview.innerHTML;
-  const initialImage = hiddenImage.value;
-
-  changePhotoButton?.addEventListener("click", () => fileInput.click());
-
-  fileInput.addEventListener("change", () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    if (file.size > 900000) {
-      notify("Choose a profile image under 900 KB for fast loading.", "error");
-      fileInput.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      hiddenImage.value = reader.result;
-      preview.innerHTML = `<img class="profile-avatar medium" src="${reader.result}" alt="Profile preview">`;
-    };
-    reader.readAsDataURL(file);
-  });
-
-  form.addEventListener("reset", () => {
-    window.setTimeout(() => {
-      hiddenImage.value = initialImage;
-      preview.innerHTML = initialPreview;
-    }, 0);
-  });
-
+  setupEmailOtpControls();
   form.addEventListener("submit", saveProfile);
 }
 
@@ -2142,14 +2370,10 @@ async function saveProfile(event) {
   const form = event.target;
   const button = form.querySelector("button[type='submit']");
   const data = Object.fromEntries(new FormData(form));
-  const firstName = String(data.first_name || "").trim();
-  const lastName = String(data.last_name || "").trim();
   const name = String(data.name || "").trim();
-  const username = String(data.username || "").trim();
   const email = String(data.email || "").trim();
+  const currentEmail = String(getSession()?.user?.email || "").trim();
   const mobile = data.mobile ? normalizePhoneNumber(data.mobile) : "";
-  const gender = String(data.gender || "").trim();
-  const dateOfBirth = String(data.date_of_birth || "").trim();
   const profileImage = String(data.profile_image || "");
 
   if (!name) return notify("Enter your full name.", "error");
@@ -2163,23 +2387,34 @@ async function saveProfile(event) {
       data: {
         name,
         full_name: name,
-        first_name: firstName,
-        last_name: lastName,
-        username,
-        screen_name: username,
         mobile,
         phone_number: mobile,
-        gender,
-        date_of_birth: dateOfBirth,
         profile_image: profileImage
       }
     };
-    if (email !== getSession()?.user?.email) updatePayload.email = email;
+    if (email !== currentEmail) updatePayload.email = email;
     const { data: updated, error } = await client.auth.updateUser(updatePayload);
     if (error) {
       console.error(error);
       throw new Error(authErrorMessage(error, error.message || "Could not update profile."));
     }
+
+    if (email !== currentEmail) {
+      emailAuthState.email = email;
+      emailAuthState.flow = "email_change";
+      emailAuthState.profileData = { name, email, mobile, profile_image: profileImage };
+      emailAuthState.pendingEmailChange = { name, email, mobile, profile_image: profileImage };
+      emailAuthState.otpExpiresAt = Date.now() + EMAIL_OTP_EXPIRY_MS;
+      emailAuthState.verifyAttempts = 0;
+      const cooldownKey = `${OTP_COOLDOWN_KEY}:email_change:${email.toLowerCase()}`;
+      startEmailAuthCooldown(cooldownKey);
+      const panel = document.getElementById("profileEmailOtpPanel");
+      if (panel) panel.hidden = false;
+      resetEmailOtpInputs();
+      notify("Verification OTP sent to your new email.", "success");
+      return;
+    }
+
     await upsertUserProfile(updated.user || getUser(), {
       name,
       full_name: name,
@@ -2262,13 +2497,14 @@ function settingsPage() {
       </section>
 
       <div class="settings-list">
-        <article class="settings-row"><span>${accountIcon("Payment Methods")}</span><div><h3>Payment</h3><p>Cash on Delivery active. UPI and cards can be connected later.</p></div></article>
-        <article class="settings-row"><span>${accountIcon("Security")}</span><div><h3>Account data</h3><p>Saved profile, wishlist, cart, orders, and secure session details.</p></div></article>
-        <article class="settings-row"><span>${accountIcon("Notifications")}</span><div><h3>Notifications</h3><p>Email alerts, drop reminders, and account updates are ready for production preferences.</p></div></article>
+        <article class="settings-row"><span>${accountIcon("Settings")}</span><div><h3>App Preferences</h3><p>Mobile-first shopping, saved cart, theme, and smooth checkout defaults.</p></div></article>
+        <article class="settings-row"><span>${accountIcon("Notifications")}</span><div><h3>Notification Preferences</h3><p>Drop, sale, restock, and order alerts without spam.</p>${notificationPreferencesMarkup()}</div></article>
+        <article class="settings-row"><span>${accountIcon("Security")}</span><div><h3>Account Protection</h3><p>Email OTP verification, password recovery, and logout controls.</p><a class="text-button" href="#/profile/security">Manage security</a></div></article>
       </div>
     </section>
   `;
   updateThemeCards();
+  setupNotificationPreferenceControls();
 }
 
 async function adminPage() {
@@ -2397,9 +2633,9 @@ function infoPage(title) {
   const pages = {
     About: {
       eyebrow: "About Urban Kicks India",
-      title: "Built for sneaker culture",
-      copy: "We are passionate about premium sneakers and streetwear culture. Urban Kicks India brings curated sneaker collections designed for comfort, style, and individuality.",
-      detail: "From daily rotation pairs to statement drops, every collection is shaped for people who want their footwear to feel personal, polished, and ready for the city."
+      title: "Premium sneaker culture for India",
+      copy: "Urban Kicks India is a premium sneaker and streetwear platform built for modern sneaker culture in India.",
+      detail: "We focus on curated sneaker drops, stylish everyday footwear, and premium streetwear experiences for sneaker lovers.\n\nFrom classic silhouettes to modern hype releases, Urban Kicks India delivers fashion-forward collections designed for comfort, movement, and style.\n\nOur mission is to bring premium sneaker culture closer to the Indian audience with smooth shopping, secure checkout, and a modern mobile-first experience."
     },
     Terms: {
       eyebrow: "Terms & Conditions",
@@ -2418,7 +2654,7 @@ function infoPage(title) {
   app.innerHTML = `
     <section class="section">
       ${sectionHead(page.eyebrow, page.title, page.copy)}
-      <div class="about-card"><p>${safe(page.detail)}</p></div>
+      <div class="about-card">${safe(page.detail).split("\n\n").map((paragraph) => `<p>${paragraph}</p>`).join("")}</div>
     </section>
   `;
 }
@@ -2474,6 +2710,7 @@ async function router() {
     if (parts[0] === "auth") return authPage(parts[1] || "login");
     if (parts[0] === "profile") return profilePage(parts[1] || "overview", parts[2] || "", parts[3] || "");
     if (parts[0] === "settings") return settingsPage();
+    if (parts[0] === "help") return supportPage();
     if (parts[0] === "admin") return adminPage();
     if (["about", "terms", "privacy"].includes(parts[0])) return infoPage(parts[0].replace(/^\w/, (c) => c.toUpperCase()));
     return homePage();
@@ -2514,6 +2751,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupSplashScreen();
   updateThemeCards();
   setupHeaderSearch();
+  maybeShowNotificationPrompt();
   updateMobileAccountLink();
   setupAuthStateListener().catch((error) => console.error("[auth] listener setup failed", error));
   verifySession();

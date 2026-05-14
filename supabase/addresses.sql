@@ -12,7 +12,7 @@ create table if not exists public.addresses (
   area text not null,
   house_no text not null,
   landmark text,
-  address_type text not null default 'Home' check (address_type in ('Home', 'Office', 'Other')),
+  address_type text not null default 'Home' check (address_type in ('Home', 'Work', 'Other')),
   is_default boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

@@ -58,7 +58,7 @@ function validateAddress(payload) {
   if (!payload.state) return "State is required";
   if (!payload.area) return "Locality / Area / Street is required";
   if (!payload.house_no) return "Flat / House / Building is required";
-  if (!["Home", "Office", "Other"].includes(payload.address_type)) return "Choose a valid address type";
+  if (!["Home", "Work", "Other"].includes(payload.address_type)) return "Choose a valid address type";
   return "";
 }
 
