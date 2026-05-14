@@ -5606,3 +5606,84 @@ body.light-mode .mobile-bottom-nav a.active svg {
     width: 100%;
   }
 }
+
+.mobile-bottom-nav[hidden] {
+  display: none !important;
+}
+
+.mobile-bottom-nav a,
+body.light-mode .mobile-bottom-nav a {
+  transition: color 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.mobile-bottom-nav a:hover,
+body.light-mode .mobile-bottom-nav a:hover {
+  background: rgba(227, 6, 19, 0.08) !important;
+  color: #ffffff;
+}
+
+body.light-mode .mobile-bottom-nav a:hover {
+  color: #0c0d10;
+}
+
+.mobile-bottom-nav a.active,
+body.light-mode .mobile-bottom-nav a.active {
+  background: rgba(227, 6, 19, 0.1) !important;
+  color: #ffffff;
+  border: 1px solid rgba(227, 6, 19, 0.24) !important;
+  box-shadow: 0 10px 24px rgba(227, 6, 19, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  transform: translateY(-2px);
+}
+
+body.light-mode .mobile-bottom-nav a.active {
+  background: rgba(227, 6, 19, 0.08) !important;
+  color: #0c0d10;
+  box-shadow: 0 10px 24px rgba(227, 6, 19, 0.12), inset 0 0 0 1px rgba(227, 6, 19, 0.08) !important;
+}
+
+.mobile-bottom-nav a.active svg,
+body.light-mode .mobile-bottom-nav a.active svg {
+  color: currentColor;
+  fill: currentColor;
+  opacity: 1;
+}
+
+.mobile-bottom-nav a.active::after,
+body.light-mode .mobile-bottom-nav a.active::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #e30613, transparent);
+  box-shadow: 0 0 14px rgba(227, 6, 19, 0.55);
+}
+
+.account-menu-row .account-arrow,
+.account-arrow,
+body.light-mode .account-arrow {
+  width: auto !important;
+  height: auto !important;
+  min-width: 14px;
+  display: inline-grid;
+  place-items: center;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #9aa1ad !important;
+  font-family: Inter, Manrope, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  transform: none;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.account-menu-row:hover .account-arrow,
+body.light-mode .account-menu-row:hover .account-arrow {
+  color: #e30613 !important;
+  transform: translateX(2px);
+}

@@ -527,16 +527,65 @@ function updateMobileAccountLink() {
   }
 }
 
-function updateMobileActiveNav() {
-  const root = location.hash.replace(/^#\/?/, "").split("/")[0] || "home";
+function getMobileNavState() {
+  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  const root = parts[0] || "home";
+  const profileSubpages = new Set(["edit", "orders", "addresses", "payments", "notifications", "settings", "security"]);
+  const shouldHide = (root === "profile" && profileSubpages.has(parts[1])) || root === "settings" || root === "help";
   const activeKey = root === "cart" ? "cart"
-    : root === "categories" || root === "category" || root === "brand" ? "categories"
-      : root === "profile" || root === "auth" ? "account"
-        : root === "search" ? "new"
+    : root === "wishlist" ? "wishlist"
+      : root === "categories" || root === "category" || root === "brand" ? "categories"
+        : root === "profile" || root === "auth" ? "account"
           : "home";
+
+  return { activeKey, parts, root, shouldHide };
+}
+
+function mobileNavTarget(key) {
+  const session = getSession();
+  return key === "cart" ? "#/cart"
+    : key === "wishlist" ? "#/wishlist"
+      : key === "categories" ? "#/categories"
+        : key === "account" ? (session ? "#/profile" : "#/auth")
+          : "#/";
+}
+
+function scrollPageTop() {
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+function updateMobileActiveNav() {
+  const { activeKey, shouldHide } = getMobileNavState();
+  const nav = document.querySelector(".mobile-bottom-nav");
+  if (nav) nav.hidden = shouldHide;
 
   document.querySelectorAll("[data-mobile-nav]").forEach((link) => {
     link.classList.toggle("active", link.dataset.mobileNav === activeKey);
+  });
+}
+
+function setupMobileBottomNav() {
+  document.querySelectorAll(".mobile-bottom-nav [data-mobile-nav]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const key = link.dataset.mobileNav;
+      const { activeKey } = getMobileNavState();
+      if (key !== activeKey) return;
+
+      event.preventDefault();
+      const target = mobileNavTarget(key);
+      const normalizedHash = location.hash || "#/";
+
+      if (normalizedHash === target || (key === "home" && ["#", "#/"].includes(normalizedHash))) {
+        router();
+        scrollPageTop();
+        return;
+      }
+
+      location.hash = target;
+      window.setTimeout(scrollPageTop, 140);
+    });
   });
 }
 
@@ -2972,6 +3021,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupSplashScreen();
   updateThemeCards();
   setupHeaderSearch();
+  setupMobileBottomNav();
   maybeShowNotificationPrompt();
   updateMobileAccountLink();
   setupAuthStateListener().catch((error) => console.error("[auth] listener setup failed", error));
