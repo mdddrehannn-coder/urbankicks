@@ -2173,18 +2173,18 @@ function addressFormPage(account, mode = "new", id = "") {
         <span aria-hidden="true"></span>
       </div>
       <form class="address-form" id="addressForm" data-address-id="${safe(existing.id || "")}">
+        ${addressFormSection("Contact Info", `
+          ${addressField("Full Name", "fullName", existing.fullName || account.profile.name, "text", true)}
+          ${addressField("Mobile Number", "phone", existing.phone || account.profile.mobile, "tel", true, "tel", 'autocomplete="tel"')}
+          ${addressField("Alternative Mobile Number (optional)", "alternatePhone", existing.alternatePhone || "", "tel", false, "tel", 'autocomplete="tel"')}
+        `)}
         ${addressFormSection("Address Info", `
           ${addressField("Pincode", "pincode", existing.pincode || "", "text", true, "numeric")}
           ${addressField("State", "state", existing.state || "", "text", true, "", existing.state ? "readonly" : "")}
           ${addressField("City", "city", existing.city || "", "text", true, "", existing.city ? "readonly" : "")}
           ${addressField("Locality / Area / Street", "area", existing.area || "", "text", true)}
-          <div class="pincode-locality-suggestions" id="pincodeLocalitySuggestions" hidden></div>
           ${addressField("House No / Building", "houseNo", existing.houseNo || "", "text", true)}
           ${addressField("Landmark (optional)", "landmark", existing.landmark || "", "text", false)}
-        `)}
-        ${addressFormSection("Contact Info", `
-          ${addressField("Full Name", "fullName", existing.fullName || account.profile.name, "text", true)}
-          ${addressField("Phone Number", "phone", existing.phone || account.profile.mobile, "tel", true)}
         `)}
         <section class="address-form-section">
           <h2>Address Type</h2>
@@ -2760,51 +2760,12 @@ function setStateCityReadonly(form, readonly) {
   });
 }
 
-function clearLocalitySuggestions(form) {
-  const box = form.querySelector("#pincodeLocalitySuggestions");
-  if (!box) return;
-  box.hidden = true;
-  box.innerHTML = "";
-}
-
-function renderLocalitySuggestions(form, offices = []) {
-  const box = form.querySelector("#pincodeLocalitySuggestions");
-  if (!box) return;
-  const localities = [...new Set(offices.map((office) => office.name).filter(Boolean))];
-  if (!localities.length) {
-    clearLocalitySuggestions(form);
-    return;
-  }
-  box.hidden = false;
-  box.innerHTML = `
-    <span>Select locality</span>
-    <div>${localities.map((name) => `<button type="button" data-locality="${safe(name)}">${safe(name)}</button>`).join("")}</div>
-  `;
-  box.querySelectorAll("[data-locality]").forEach((button) => {
-    button.addEventListener("click", () => {
-      form.elements.area.value = button.dataset.locality || "";
-      clearFieldError(form, "area");
-      box.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
-      updateAddressSubmitState(form);
-      window.setTimeout(() => form.elements.houseNo?.focus(), 80);
-    });
-  });
-  if (!String(form.elements.area?.value || "").trim()) {
-    const first = box.querySelector("[data-locality]");
-    if (first) {
-      form.elements.area.value = first.dataset.locality || "";
-      first.classList.add("active");
-    }
-  }
-}
-
 function handlePincodeInput(form) {
   const input = form.elements.pincode;
   const rawValue = String(input.value || "");
   input.value = rawValue.replace(/\D/g, "").slice(0, 6);
   clearFieldError(form, "pincode");
   addressPincodeState = { pincode: input.value, valid: false, state: "", city: "", message: "", offices: [] };
-  clearLocalitySuggestions(form);
   if ((rawValue && !input.value) || (input.value && input.value.length < 6)) {
     setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
   }
@@ -2833,7 +2794,6 @@ async function validatePincodeWithServer(form, pincode) {
       addressPincodeState = { pincode, valid: true, state: "", city: "", message: result.message || "", offices: [], manual: true };
       setFieldStatus(form, "pincode", result.message || "Enter state and city manually.");
       setStateCityReadonly(form, false);
-      clearLocalitySuggestions(form);
       updateAddressSubmitState(form);
       window.setTimeout(() => form.elements.state?.focus(), 80);
       return true;
@@ -2851,20 +2811,15 @@ async function validatePincodeWithServer(form, pincode) {
     form.elements.state.value = result.state || "";
     form.elements.city.value = result.city || "";
     setStateCityReadonly(form, Boolean(result.state && result.city));
-    renderLocalitySuggestions(form, offices);
     clearFieldError(form, "state");
     clearFieldError(form, "city");
     updateAddressSubmitState(form);
-    window.setTimeout(() => {
-      if (form.elements.area?.value) form.elements.houseNo?.focus();
-      else form.elements.area?.focus();
-    }, 100);
+    window.setTimeout(() => form.elements.area?.focus(), 100);
     return true;
   } catch (error) {
     addressPincodeState = { pincode, valid: false, state: "", city: "", message: "Enter a valid 6-digit Indian PIN code", offices: [] };
     setFieldError(form, "pincode", "Enter a valid 6-digit Indian PIN code");
     setStateCityReadonly(form, false);
-    clearLocalitySuggestions(form);
     updateAddressSubmitState(form);
     return false;
   }
