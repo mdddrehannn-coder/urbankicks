@@ -10,6 +10,7 @@ const authRoutes = require("./routes/auth");
 const wishlistRoutes = require("./routes/wishlist");
 const transactionRoutes = require("./routes/transactions");
 const addressRoutes = require("./routes/addresses");
+const notificationRoutes = require("./routes/notifications");
 const { supabaseUrl, supabaseAnonKey } = require("./lib/supabase");
 
 const app = express();
@@ -26,6 +27,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/addresses", addressRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/api/config/supabase", (_req, res) => {
   try {
@@ -53,6 +55,12 @@ app.get("/api/config/payment", (_req, res) => {
     cod: { enabled: true, label: "Cash on Delivery" },
     upi: { enabled: false, label: "UPI Payment", status: "Coming soon" },
     note: "Cash on Delivery is live. UPI/Razorpay is prepared in the UI but disabled until integration."
+  });
+});
+
+app.get("/api/config/push", (_req, res) => {
+  res.json({
+    publicKey: process.env.VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""
   });
 });
 

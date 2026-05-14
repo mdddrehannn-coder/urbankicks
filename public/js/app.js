@@ -22,6 +22,12 @@ const EMAIL_OTP_LENGTH = 6;
 const EMAIL_AUTH_COOLDOWN_SECONDS = 30;
 const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_OTP_MAX_VERIFY_ATTEMPTS = 5;
+const PUSH_PERMISSION_STORE_KEY = "urbanKicksPushPermission";
+
+if ("scrollRestoration" in history) {
+  history.scrollRestoration = "manual";
+}
+window.scrollTo(0, 0);
 
 let catalogCache = null;
 let wishlistCache = null;
@@ -32,6 +38,7 @@ let smartAddressOutsideClickReady = false;
 let authRefreshTimer = null;
 let supabaseClient = null;
 let supabaseClientPromise = null;
+let lastRouteKey = "";
 let emailAuthState = {
   email: "",
   profileData: null,
@@ -2382,6 +2389,43 @@ function saveNotificationPrefs(prefs) {
   setStore(NOTIFICATION_PREF_KEY, prefs);
 }
 
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+async function savePushPermission(subscription = null, permission = typeof Notification !== "undefined" ? Notification.permission : "default") {
+  const payload = {
+    permission,
+    subscription,
+    preferences: getNotificationPrefs(),
+    savedAt: new Date().toISOString()
+  };
+  setStore(PUSH_PERMISSION_STORE_KEY, payload);
+  await api("/api/notifications/subscribe", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }).catch((error) => console.warn("[notifications] subscription save skipped:", error.message));
+}
+
+async function createPushSubscriptionIfAvailable() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const config = await fetch("/api/config/push", { headers: { Accept: "application/json" } })
+    .then((response) => response.ok ? response.json() : null)
+    .catch(() => null);
+  if (!config?.publicKey) return null;
+  const registration = await navigator.serviceWorker.register("/sw.js");
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) return existing.toJSON();
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(config.publicKey)
+  });
+  return subscription.toJSON();
+}
+
 function notificationPreferencesMarkup() {
   const prefs = getNotificationPrefs();
   const row = (key, title, copy) => `
@@ -2419,121 +2463,75 @@ async function requestBrowserNotifications() {
   if (!("Notification" in window)) {
     prefs.browser = false;
     saveNotificationPrefs(prefs);
-    notify("Browser notifications are not supported here.", "error");
+    await savePushPermission(null, "unsupported");
     return;
   }
   try {
     if (Notification.permission === "denied") {
       prefs.browser = false;
       saveNotificationPrefs(prefs);
-      showNotificationGuideModal();
+      await savePushPermission(null, "denied");
       return;
     }
     const permission = await Notification.requestPermission();
     prefs.browser = permission === "granted";
     saveNotificationPrefs(prefs);
-    if (permission === "denied") {
-      showNotificationGuideModal();
-      return;
+    let subscription = null;
+    if (permission === "granted") {
+      subscription = await createPushSubscriptionIfAvailable().catch((error) => {
+        console.warn("[notifications] push subscription failed:", error.message);
+        return null;
+      });
     }
-    notify(permission === "granted" ? "Notifications enabled." : "Notifications paused.", permission === "granted" ? "success" : "info");
+    await savePushPermission(subscription, permission);
+    if (permission === "granted") notify("Notifications enabled.", "success");
   } catch (error) {
     prefs.browser = false;
     saveNotificationPrefs(prefs);
-    notify("Could not request notification permission.", "error");
+    await savePushPermission(null, "error");
   }
 }
 
 function maybeShowNotificationPrompt() {
   const prefs = getNotificationPrefs();
   if (!("Notification" in window)) return;
-  if (Notification.permission === "denied") {
-    window.addEventListener("click", () => window.setTimeout(showNotificationDeniedBanner, 1400), { once: true });
-    return;
-  }
   if (prefs.prompted || Notification.permission !== "default") return;
 
   const showPrompt = () => {
-    if (getNotificationPrefs().prompted || document.getElementById("notificationPermissionModal")) return;
-    const modal = document.createElement("div");
-    modal.className = "notification-permission-backdrop";
-    modal.id = "notificationPermissionModal";
-    modal.innerHTML = `
-      <section class="notification-permission-modal" role="dialog" aria-modal="true" aria-label="Enable notifications">
-        <p class="eyebrow">Drop access</p>
-        <h2>Exclusive alerts</h2>
-        <p>Get only the important Urban Kicks updates.</p>
-        <ul>
-          <li>New sneaker drops</li>
-          <li>Flash sales</li>
-          <li>Restocks</li>
-          <li>Order updates</li>
-        </ul>
-        <div class="profile-form-actions">
-          <button class="button primary" type="button" id="allowNotificationsButton">Allow Notifications</button>
-          <button class="button light" type="button" id="laterNotificationsButton">Maybe Later</button>
-        </div>
-      </section>
+    if (getNotificationPrefs().prompted || Notification.permission !== "default" || document.getElementById("notificationPermissionPrompt")) return;
+    const prompt = document.createElement("div");
+    prompt.className = "notification-mini-prompt";
+    prompt.id = "notificationPermissionPrompt";
+    prompt.setAttribute("role", "status");
+    prompt.innerHTML = `
+      <span>Enable notifications for order updates and offers?</span>
+      <div>
+        <button class="notification-mini-allow" type="button" id="allowNotificationsButton">Allow</button>
+        <button class="notification-mini-later" type="button" id="laterNotificationsButton">Not now</button>
+      </div>
     `;
-    document.body.appendChild(modal);
-    window.setTimeout(() => modal.classList.add("show"), 20);
+    document.body.appendChild(prompt);
+    window.setTimeout(() => prompt.classList.add("show"), 20);
     document.getElementById("allowNotificationsButton")?.addEventListener("click", async () => {
       await requestBrowserNotifications();
-      modal.remove();
+      prompt.remove();
     });
     document.getElementById("laterNotificationsButton")?.addEventListener("click", () => {
       saveNotificationPrefs({ ...getNotificationPrefs(), prompted: true, browser: false });
-      modal.remove();
+      prompt.remove();
     });
   };
 
-  window.setTimeout(showPrompt, 24000);
+  window.setTimeout(showPrompt, 4500);
   window.addEventListener("click", () => window.setTimeout(showPrompt, 1200), { once: true });
 }
 
 function showNotificationDeniedBanner() {
-  if (document.getElementById("notificationDeniedBanner") || Notification.permission !== "denied") return;
-  const banner = document.createElement("div");
-  banner.className = "notification-denied-banner";
-  banner.id = "notificationDeniedBanner";
-  banner.innerHTML = `
-    <div>
-      <strong>Notifications are off</strong>
-      <span>Enable browser permissions to get drops, restocks, and order updates.</span>
-    </div>
-    <button class="button primary" type="button" id="notificationGuideButton">Enable Notifications</button>
-    <button class="notification-dismiss" type="button" id="notificationDismissButton" aria-label="Dismiss notification permissions message">&times;</button>
-  `;
-  document.body.appendChild(banner);
-  window.setTimeout(() => banner.classList.add("show"), 20);
-  document.getElementById("notificationGuideButton")?.addEventListener("click", showNotificationGuideModal);
-  document.getElementById("notificationDismissButton")?.addEventListener("click", () => banner.remove());
+  return null;
 }
 
 function showNotificationGuideModal() {
-  if (document.getElementById("notificationGuideModal")) return;
-  const modal = document.createElement("div");
-  modal.className = "notification-permission-backdrop notification-guide-backdrop";
-  modal.id = "notificationGuideModal";
-  modal.innerHTML = `
-    <section class="notification-permission-modal notification-guide-modal" role="dialog" aria-modal="true" aria-label="Enable browser notifications guide">
-      <p class="eyebrow">Manual permission</p>
-      <h2>Enable notifications</h2>
-      <p>Your browser has blocked notification prompts for Urban Kicks. Turn them back on from site settings.</p>
-      <ol>
-        <li>Tap the lock or tune icon near the address bar.</li>
-        <li>Open Site settings or Permissions.</li>
-        <li>Set Notifications to Allow, then refresh Urban Kicks.</li>
-      </ol>
-      <div class="profile-form-actions">
-        <button class="button primary" type="button" onclick="location.reload()">Refresh after enabling</button>
-        <button class="button light" type="button" id="closeNotificationGuide">Done</button>
-      </div>
-    </section>
-  `;
-  document.body.appendChild(modal);
-  window.setTimeout(() => modal.classList.add("show"), 20);
-  document.getElementById("closeNotificationGuide")?.addEventListener("click", () => modal.remove());
+  return null;
 }
 
 function setupProfileEditForm() {
@@ -2615,17 +2613,36 @@ async function getIndiaAddressMeta() {
 
 async function setupSmartAddressControls(form) {
   const states = await getIndiaAddressMeta();
+  const stateNames = Object.keys(states).sort((a, b) => a.localeCompare(b));
+  const setupCitySelect = () => {
+    const state = form.elements.state?.value || "";
+    const cityOptions = states[state] || [];
+    setupSmartSelect(form, "city", cityOptions, (city) => {
+      setSmartSelectValue(form, "city", city);
+      clearFieldError(form, "city");
+      validateSelectedPincodeMatch(form);
+      updateAddressSubmitState(form);
+      window.setTimeout(() => form.elements.pincode?.focus(), 80);
+    });
+    const citySearch = form.querySelector("#citySearch");
+    if (citySearch) {
+      citySearch.disabled = !state;
+      citySearch.placeholder = state ? "Search city" : "Select state first";
+      citySearch.setAttribute("aria-disabled", String(!state));
+    }
+  };
   const selectedState = getExactOption(Object.keys(states), form.elements.state?.value) || "";
   if (form.elements.state?.value && !selectedState) {
     setSmartSelectValue(form, "state", "");
   }
   if (selectedState) setSmartSelectValue(form, "state", selectedState);
 
-  setupSmartSelect(form, "state", Object.keys(states), (state) => {
+  setupSmartSelect(form, "state", stateNames, (state) => {
     setSmartSelectValue(form, "state", state);
     setSmartSelectValue(form, "city", "");
-    setupSmartSelect(form, "city", states[state] || []);
+    setupCitySelect();
     clearFieldError(form, "state");
+    clearFieldError(form, "city");
     validateSelectedPincodeMatch(form);
     updateAddressSubmitState(form);
     window.setTimeout(() => form.querySelector("#citySearch")?.focus(), 80);
@@ -2636,19 +2653,19 @@ async function setupSmartAddressControls(form) {
   if (form.elements.city?.value && !selectedCity) setSmartSelectValue(form, "city", "");
   if (selectedCity) setSmartSelectValue(form, "city", selectedCity);
 
-  setupSmartSelect(form, "city", cityOptions, (city) => {
-    setSmartSelectValue(form, "city", city);
-    clearFieldError(form, "city");
-    validateSelectedPincodeMatch(form);
-    updateAddressSubmitState(form);
-    window.setTimeout(() => form.elements.pincode?.focus(), 80);
-  });
-  const citySearch = form.querySelector("#citySearch");
-  if (citySearch) {
-    citySearch.disabled = !form.elements.state?.value;
-    citySearch.placeholder = form.elements.state?.value ? "Search city" : "Select state first";
-  }
+  setupCitySelect();
   updateAddressSubmitState(form);
+}
+
+function filterSmartOptions(options, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return options.slice(0, 80);
+  const startsWith = options.filter((option) => option.toLowerCase().startsWith(normalizedQuery));
+  const contains = options.filter((option) => (
+    !option.toLowerCase().startsWith(normalizedQuery)
+    && option.toLowerCase().includes(normalizedQuery)
+  ));
+  return [...startsWith, ...contains].slice(0, 80);
 }
 
 function setupSmartSelect(form, name, options, onSelect) {
@@ -2661,7 +2678,7 @@ function setupSmartSelect(form, name, options, onSelect) {
 
   const renderOptions = () => {
     const query = search.value.trim().toLowerCase();
-    currentOptions = options.filter((option) => option.toLowerCase().includes(query)).slice(0, 80);
+    currentOptions = filterSmartOptions(options, query);
     highlightedIndex = 0;
     const emptyText = name === "city" && !form.elements.state?.value ? "Select state first" : `No valid ${name === "state" ? "state" : "city"} found`;
     menu.innerHTML = currentOptions.map((option, index) => `<button class="${index === highlightedIndex ? "highlighted" : ""}" type="button" role="option" data-smart-option="${safe(option)}">${safe(option)}</button>`).join("")
@@ -2674,6 +2691,8 @@ function setupSmartSelect(form, name, options, onSelect) {
     const exact = getExactOption(options, value);
     if (!exact) return false;
     onSelect(exact);
+    search.value = exact;
+    form.elements[name].value = exact;
     menu.hidden = true;
     search.setAttribute("aria-expanded", "false");
     return true;
@@ -2699,7 +2718,9 @@ function setupSmartSelect(form, name, options, onSelect) {
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const selected = currentOptions[highlightedIndex] || currentOptions[0] || "";
+      if (menu.hidden) renderOptions();
+      const exactTyped = getExactOption(options, search.value);
+      const selected = exactTyped || currentOptions[highlightedIndex] || currentOptions[0] || "";
       if (!selectOption(selected)) {
         setFieldError(form, name, name === "state" ? "Select a valid state" : "Select a valid city");
         updateAddressSubmitState(form);
@@ -3408,6 +3429,8 @@ function toggleTheme() {
 async function router() {
   renderCounters();
   closeNav();
+  const routeKey = location.hash || "#/";
+  const shouldResetScroll = routeKey !== lastRouteKey;
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   try {
     if (!parts.length) return homePage();
@@ -3429,6 +3452,11 @@ async function router() {
     return homePage();
   } catch (error) {
     emptyPage("Something went wrong", error.message);
+  } finally {
+    if (shouldResetScroll) {
+      lastRouteKey = routeKey;
+      window.requestAnimationFrame(() => window.scrollTo(0, 0));
+    }
   }
 }
 
@@ -3454,6 +3482,7 @@ window.selectCheckoutAddress = selectCheckoutAddress;
 
 navToggle?.addEventListener("click", () => document.querySelector(".nav-links")?.classList.toggle("open"));
 window.addEventListener("hashchange", router);
+window.addEventListener("pageshow", () => window.scrollTo(0, 0));
 window.addEventListener("urban-kicks-auth", (event) => {
   console.log(`[auth] state changed: ${event.detail.event}`);
   updateMobileAccountLink();
