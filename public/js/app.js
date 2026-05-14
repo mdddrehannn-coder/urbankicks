@@ -7,11 +7,15 @@ const headerSearchForm = document.getElementById("headerSearchForm");
 const mobileSearchButton = document.getElementById("mobileSearchButton");
 const mobileCartCount = document.getElementById("mobileCartCount");
 const mobileHeaderCartCount = document.getElementById("mobileHeaderCartCount");
+const splashScreen = document.getElementById("splashScreen");
 
 const CART_KEY = "urbanKicksCart";
 const SESSION_KEY = "urbanKicksSession";
 const WISH_KEY = "urbanKicksWishlist";
 const THEME_KEY = "urbanKicksTheme";
+const SPLASH_KEY = "urbanKicksSplashSeen";
+const SPLASH_HOLD_MS = 1550;
+const SPLASH_FADE_MS = 720;
 const OTP_COOLDOWN_KEY = "urbanKicksOtpCooldown";
 const EMAIL_OTP_LENGTH = 6;
 const EMAIL_AUTH_COOLDOWN_SECONDS = 60;
@@ -531,6 +535,39 @@ function setupHeaderSearch() {
   mobileSearchButton?.addEventListener("click", () => {
     location.hash = "#/search/sneakers";
   });
+}
+
+function setupSplashScreen() {
+  if (!splashScreen) {
+    document.body.classList.add("splash-complete");
+    return;
+  }
+
+  let hasSeenSplash = false;
+  try {
+    hasSeenSplash = sessionStorage.getItem(SPLASH_KEY) === "true";
+  } catch (_error) {
+    hasSeenSplash = false;
+  }
+
+  if (hasSeenSplash) {
+    splashScreen.remove();
+    document.body.classList.remove("splash-active");
+    document.body.classList.add("splash-complete");
+    return;
+  }
+
+  document.body.classList.add("splash-active");
+  window.setTimeout(() => {
+    splashScreen.classList.add("hide");
+    splashScreen.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("splash-active");
+    document.body.classList.add("splash-complete");
+    try {
+      sessionStorage.setItem(SPLASH_KEY, "true");
+    } catch (_error) {}
+    window.setTimeout(() => splashScreen.remove(), SPLASH_FADE_MS);
+  }, SPLASH_HOLD_MS);
 }
 
 function sectionHead(eyebrow, title, copy, action = "") {
@@ -2474,6 +2511,7 @@ window.addEventListener("urban-kicks-auth", (event) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   if (localStorage.getItem(THEME_KEY) === "light") document.body.classList.add("light-mode");
+  setupSplashScreen();
   updateThemeCards();
   setupHeaderSearch();
   updateMobileAccountLink();
